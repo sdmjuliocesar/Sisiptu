@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Gestão de IPTU - Login</title>
+    <link rel="icon" type="image/x-icon" href="/SISIPTU/favicon.ico">
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <div class="login-container">
+        <div class="login-box">
+            <div class="login-header">
+                <h1>Gestão de IPTU</h1>
+                <div class="image-container">
+                    <img src="img/iptu-pagamento.jpg" alt="Pagamento de IPTU" id="iptu-image" onerror="this.src='https://via.placeholder.com/200x150/90EE90/006400?text=Pagamento+IPTU'">
+                </div>
+            </div>
+            
+            <form id="loginForm" action="php/login.php" method="POST">
+                <div class="form-group">
+                    <label for="usuario">Usuário</label>
+                    <input type="text" id="usuario" name="usuario" required autocomplete="username">
+                </div>
+                
+                <div class="form-group">
+                    <label for="senha">Senha</label>
+                    <div class="password-wrapper">
+                        <input type="password" id="senha" name="senha" required autocomplete="current-password">
+                        <button type="button" class="toggle-password" id="togglePassword" aria-label="Mostrar senha">
+                            <span class="eye-icon">👁️</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <button type="submit" class="btn-login">Entrar</button>
+                </div>
+                
+                <div id="mensagem" class="mensagem"></div>
+            </form>
+        </div>
+    </div>
+    
+    <script src="js/script.js"></script>
+</body>
+</html>

@@ -1,0 +1,3 @@
+# Proteger arquivos de log
+Order deny,allow
+Deny from all

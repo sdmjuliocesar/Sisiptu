@@ -1,0 +1,7 @@
+# Proteger arquivos de upload
+Options -Indexes
+<FilesMatch "\.(txt|rem|ret|cnab|csv)$">
+    Order Allow,Deny
+    Deny from all
+</FilesMatch>
+
