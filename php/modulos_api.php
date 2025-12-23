@@ -159,6 +159,19 @@ try {
         default:
             jsonResponseMod(false, 'Ação inválida.');
     }
+} catch (PDOException $e) {
+    // Capturar erro de violação de chave estrangeira
+    if ($e->getCode() === '23503') { // PostgreSQL foreign key violation error code
+        jsonResponseMod(false, 'Não é possível excluir o módulo pois ele possui contratos vinculados.');
+    } else {
+        registrarLog('ERRO', 'Erro no CRUD de módulos: ' . $e->getMessage(), [
+            'action' => $action,
+            'erro' => $e->getMessage(),
+            'arquivo' => $e->getFile(),
+            'linha' => $e->getLine(),
+        ]);
+        jsonResponseMod(false, 'Erro ao processar a requisição de módulos. Detalhes: ' . $e->getMessage());
+    }
 } catch (Exception $e) {
     registrarLog('ERRO', 'Erro no CRUD de módulos: ' . $e->getMessage(), [
         'action' => $action,
@@ -166,6 +179,5 @@ try {
         'arquivo' => $e->getFile(),
         'linha' => $e->getLine(),
     ]);
-
     jsonResponseMod(false, 'Erro ao processar a requisição de módulos. Detalhes: ' . $e->getMessage());
 }

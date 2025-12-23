@@ -1,9 +1,18 @@
 <?php
+// Iniciar output buffering para evitar saída prematura
+ob_start();
+
+// Desabilitar exibição de erros na saída
+ini_set('display_errors', 0);
+error_reporting(E_ALL);
+
 session_start();
 
 require_once __DIR__ . '/../config/database.php';
 require_once __DIR__ . '/../config/logger.php';
 
+// Limpar buffer antes de enviar JSON
+ob_clean();
 header('Content-Type: application/json; charset=utf-8');
 
 if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
@@ -15,6 +24,9 @@ if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
 }
 
 function jsonResponseBanco($sucesso, $mensagem, $extra = []) {
+    // Limpar qualquer saída anterior
+    ob_clean();
+    header('Content-Type: application/json; charset=utf-8');
     echo json_encode(array_merge([
         'sucesso' => $sucesso,
         'mensagem' => $mensagem,
@@ -145,10 +157,15 @@ try {
             $operacao_cc = trim($_POST['operacao_cc'] ?? '');
             $apelido = trim($_POST['apelido'] ?? '');
             $convenio = trim($_POST['convenio'] ?? '');
-            $multa_mes = isset($_POST['multa_mes']) && $_POST['multa_mes'] !== '' ? (float)$_POST['multa_mes'] : null;
-            $tarifa_bancaria = isset($_POST['tarifa_bancaria']) && $_POST['tarifa_bancaria'] !== '' ? (float)$_POST['tarifa_bancaria'] : null;
-            $juros_mes = isset($_POST['juros_mes']) && $_POST['juros_mes'] !== '' ? (float)$_POST['juros_mes'] : null;
-            $prazo_devolucao = isset($_POST['prazo_devolucao']) && $_POST['prazo_devolucao'] !== '' ? (int)$_POST['prazo_devolucao'] : null;
+            // Processar valores numéricos, removendo espaços e convertendo vírgula para ponto
+            $multa_mes = isset($_POST['multa_mes']) && trim($_POST['multa_mes']) !== '' ? 
+                (float)str_replace(',', '.', trim($_POST['multa_mes'])) : null;
+            $tarifa_bancaria = isset($_POST['tarifa_bancaria']) && trim($_POST['tarifa_bancaria']) !== '' ? 
+                (float)str_replace(',', '.', trim($_POST['tarifa_bancaria'])) : null;
+            $juros_mes = isset($_POST['juros_mes']) && trim($_POST['juros_mes']) !== '' ? 
+                (float)str_replace(',', '.', trim($_POST['juros_mes'])) : null;
+            $prazo_devolucao = isset($_POST['prazo_devolucao']) && trim($_POST['prazo_devolucao']) !== '' ? 
+                (int)trim($_POST['prazo_devolucao']) : null;
             $codigo_cedente = trim($_POST['codigo_cedente'] ?? '');
             $operacao_cedente = trim($_POST['operacao_cedente'] ?? '');
             $emissao_via_banco = isset($_POST['emissao_via_banco']) && $_POST['emissao_via_banco'] === '1';
@@ -230,10 +247,15 @@ try {
             $operacao_cc = trim($_POST['operacao_cc'] ?? '');
             $apelido = trim($_POST['apelido'] ?? '');
             $convenio = trim($_POST['convenio'] ?? '');
-            $multa_mes = isset($_POST['multa_mes']) && $_POST['multa_mes'] !== '' ? (float)$_POST['multa_mes'] : null;
-            $tarifa_bancaria = isset($_POST['tarifa_bancaria']) && $_POST['tarifa_bancaria'] !== '' ? (float)$_POST['tarifa_bancaria'] : null;
-            $juros_mes = isset($_POST['juros_mes']) && $_POST['juros_mes'] !== '' ? (float)$_POST['juros_mes'] : null;
-            $prazo_devolucao = isset($_POST['prazo_devolucao']) && $_POST['prazo_devolucao'] !== '' ? (int)$_POST['prazo_devolucao'] : null;
+            // Processar valores numéricos, removendo espaços e convertendo vírgula para ponto
+            $multa_mes = isset($_POST['multa_mes']) && trim($_POST['multa_mes']) !== '' ? 
+                (float)str_replace(',', '.', trim($_POST['multa_mes'])) : null;
+            $tarifa_bancaria = isset($_POST['tarifa_bancaria']) && trim($_POST['tarifa_bancaria']) !== '' ? 
+                (float)str_replace(',', '.', trim($_POST['tarifa_bancaria'])) : null;
+            $juros_mes = isset($_POST['juros_mes']) && trim($_POST['juros_mes']) !== '' ? 
+                (float)str_replace(',', '.', trim($_POST['juros_mes'])) : null;
+            $prazo_devolucao = isset($_POST['prazo_devolucao']) && trim($_POST['prazo_devolucao']) !== '' ? 
+                (int)trim($_POST['prazo_devolucao']) : null;
             $codigo_cedente = trim($_POST['codigo_cedente'] ?? '');
             $operacao_cedente = trim($_POST['operacao_cedente'] ?? '');
             $emissao_via_banco = isset($_POST['emissao_via_banco']) && $_POST['emissao_via_banco'] === '1';
@@ -321,6 +343,19 @@ try {
         default:
             jsonResponseBanco(false, 'Ação inválida.');
     }
+} catch (PDOException $e) {
+    // Capturar erro de violação de chave estrangeira
+    if ($e->getCode() === '23503') { // PostgreSQL foreign key violation error code
+        jsonResponseBanco(false, 'Não é possível excluir o banco pois ele possui empreendimentos vinculados.');
+    } else {
+        registrarLog('ERRO', 'Erro no CRUD de bancos: ' . $e->getMessage(), [
+            'action' => $action,
+            'erro' => $e->getMessage(),
+            'arquivo' => $e->getFile(),
+            'linha' => $e->getLine(),
+        ]);
+        jsonResponseBanco(false, 'Erro ao processar a requisição de bancos. Detalhes: ' . $e->getMessage());
+    }
 } catch (Exception $e) {
     registrarLog('ERRO', 'Erro no CRUD de bancos: ' . $e->getMessage(), [
         'action' => $action,
@@ -328,6 +363,5 @@ try {
         'arquivo' => $e->getFile(),
         'linha' => $e->getLine(),
     ]);
-
     jsonResponseBanco(false, 'Erro ao processar a requisição de bancos. Detalhes: ' . $e->getMessage());
 }

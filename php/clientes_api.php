@@ -144,6 +144,72 @@ try {
 
             jsonResponseCli(true, 'Cliente carregado com sucesso.', ['cliente' => $row]);
             break;
+            
+        case 'get-by-cpf-cnpj':
+            $cpf_cnpj = isset($_GET['cpf_cnpj']) ? preg_replace('/[^0-9]/', '', trim($_GET['cpf_cnpj'])) : '';
+            if (empty($cpf_cnpj)) {
+                jsonResponseCli(false, 'CPF/CNPJ não informado.');
+            }
+
+            $stmt = $pdo->prepare("
+                SELECT id, cpf_cnpj, nome, tipo_cadastro
+                FROM clientes
+                WHERE REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '/', ''), '-', '') = :cpf_cnpj
+                LIMIT 1
+            ");
+            $stmt->bindParam(':cpf_cnpj', $cpf_cnpj, PDO::PARAM_STR);
+            $stmt->execute();
+            $row = $stmt->fetch(PDO::FETCH_ASSOC);
+
+            if (!$row) {
+                jsonResponseCli(false, 'Cliente não encontrado.');
+            }
+
+            jsonResponseCli(true, 'Cliente encontrado.', ['cliente' => $row]);
+            break;
+            
+        case 'verificar-cliente':
+            $cpf_cnpj = isset($_REQUEST['cpf_cnpj']) ? trim($_REQUEST['cpf_cnpj']) : '';
+            $cliente_id = isset($_REQUEST['cliente_id']) ? intval($_REQUEST['cliente_id']) : 0;
+            
+            if (empty($cpf_cnpj)) {
+                jsonResponseCli(false, 'CPF/CNPJ não informado.');
+            }
+            
+            // Validar CPF/CNPJ
+            if (!validarCpfCnpj($cpf_cnpj)) {
+                jsonResponseCli(false, 'CPF/CNPJ inválido.');
+            }
+            
+            $cpf_cnpj_limpo = preg_replace('/[^0-9]/', '', $cpf_cnpj);
+            
+            $sql = "SELECT id, cpf_cnpj, nome, tipo_cadastro, cidade, uf, email, tel_celular1, ativo
+                    FROM clientes
+                    WHERE REPLACE(REPLACE(REPLACE(cpf_cnpj, '.', ''), '/', ''), '-', '') = :cpf_cnpj";
+            
+            if ($cliente_id > 0) {
+                $sql .= " AND id != :cliente_id";
+            }
+            
+            $stmt = $pdo->prepare($sql);
+            $stmt->bindParam(':cpf_cnpj', $cpf_cnpj_limpo, PDO::PARAM_STR);
+            if ($cliente_id > 0) {
+                $stmt->bindParam(':cliente_id', $cliente_id, PDO::PARAM_INT);
+            }
+            $stmt->execute();
+            $cliente = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($cliente) {
+                jsonResponseCli(true, 'Cliente encontrado', [
+                    'existe' => true,
+                    'cliente' => $cliente
+                ]);
+            } else {
+                jsonResponseCli(true, 'Cliente não encontrado', [
+                    'existe' => false
+                ]);
+            }
+            break;
 
         case 'create':
             $cpf_cnpj = trim($_POST['cpf_cnpj'] ?? '');
@@ -366,11 +432,40 @@ try {
                 jsonResponseCli(false, 'ID inválido.');
             }
 
-            $stmt = $pdo->prepare("DELETE FROM clientes WHERE id = :id");
+            // Verificar se o cliente possui contratos cadastrados
+            $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM contratos WHERE cliente_id = :id");
             $stmt->bindParam(':id', $id, PDO::PARAM_INT);
             $stmt->execute();
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if ($result && $result['total'] > 0) {
+                jsonResponseCli(false, 'Não é possível excluir este cliente pois ele possui ' . $result['total'] . ' contrato(s) cadastrado(s). Remova os contratos antes de excluir o cliente.');
+            }
 
-            jsonResponseCli(true, 'Cliente excluído com sucesso.');
+            try {
+                $stmt = $pdo->prepare("DELETE FROM clientes WHERE id = :id");
+                $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+                $stmt->execute();
+
+                jsonResponseCli(true, 'Cliente excluído com sucesso.');
+            } catch (PDOException $e) {
+                // Verificar se é erro de foreign key
+                if ($e->getCode() === '23503' || strpos($e->getMessage(), 'viola restrição de chave estrangeira') !== false) {
+                    // Verificar se há contratos
+                    $stmt = $pdo->prepare("SELECT COUNT(*) as total FROM contratos WHERE cliente_id = :id");
+                    $stmt->bindParam(':id', $id, PDO::PARAM_INT);
+                    $stmt->execute();
+                    $result = $stmt->fetch(PDO::FETCH_ASSOC);
+                    
+                    if ($result && $result['total'] > 0) {
+                        jsonResponseCli(false, 'Não é possível excluir este cliente pois ele possui ' . $result['total'] . ' contrato(s) cadastrado(s). Remova os contratos antes de excluir o cliente.');
+                    } else {
+                        jsonResponseCli(false, 'Não é possível excluir este cliente pois ele possui registros relacionados no sistema.');
+                    }
+                } else {
+                    throw $e; // Re-lançar se não for erro de foreign key
+                }
+            }
             break;
 
         default:

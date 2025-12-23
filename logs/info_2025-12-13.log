@@ -1,0 +1,20 @@
+[2025-12-13 01:56:56] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 01:57:09] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 01:57:14] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 02:00:13] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"67","usuario":"admin"}
+[2025-12-13 02:03:26] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:04:02] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 02:04:10] [INFO] Título atualizado na manutenção de IPTU | IP: ::1 | {"action":"update","id":66,"valor_mensal":"003","dia_vencimento":"2020-12-25","campos_atualizados":["valor_mensal = :valor_mensal","dia_vencimento = :dia_vencimento","observacao = :observacao","data_atualizacao = CURRENT_TIMESTAMP"],"usuario":"admin"}
+[2025-12-13 02:04:13] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:11:10] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:11:29] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 02:13:38] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:19:53] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:19:57] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 02:20:01] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 02:20:12] [INFO] Título atualizado na manutenção de IPTU | IP: ::1 | {"action":"update","id":66,"valor_mensal":"100000","dia_vencimento":null,"campos_atualizados":["valor_mensal = :valor_mensal","observacao = :observacao","data_atualizacao = CURRENT_TIMESTAMP"],"usuario":"admin"}
+[2025-12-13 02:20:14] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:25:46] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}
+[2025-12-13 02:25:48] [INFO] Título carregado na manutenção de IPTU | IP: ::1 | {"action":"get","id":"66","usuario":"admin"}
+[2025-12-13 02:25:51] [INFO] Título atualizado na manutenção de IPTU | IP: ::1 | {"action":"update","id":66,"observacao":"asdaddas","campos_atualizados":["observacao = :observacao","data_atualizacao = CURRENT_TIMESTAMP"],"usuario":"admin"}
+[2025-12-13 02:25:53] [INFO] Pesquisa realizada na manutenção de IPTU | IP: ::1 | {"action":"pesquisar","ano_referencia":"2025","empreendimento_id":"2","modulo_id":"1","contrato":"123","total_encontrado":12,"usuario":"admin"}

@@ -79,6 +79,12 @@ $login_time = $_SESSION['login_time'];
                                     <span class="text">Bancos</span>
                                 </a>
                             </li>
+                            <li>
+                                <a href="#" class="submenu-item" data-page="cadastro-contratos">
+                                    <span class="icon">📋</span>
+                                    <span class="text">Contrato</span>
+                                </a>
+                            </li>
                         </ul>
                     </li>
                     <li class="menu-item-with-submenu">
@@ -101,6 +107,12 @@ $login_time = $_SESSION['login_time'];
                                 </a>
                             </li>
                             <li>
+                                <a href="#" class="submenu-item" data-page="iptu-pesquisar-contratos">
+                                    <span class="icon">🔍</span>
+                                    <span class="text">Pesquisar Contratos</span>
+                                </a>
+                            </li>
+                            <li>
                                 <a href="#" class="submenu-item" data-page="iptu-gerar-iptu">
                                     <span class="icon">📄</span>
                                     <span class="text">Gerar IPTU</span>
@@ -114,11 +126,32 @@ $login_time = $_SESSION['login_time'];
                             </li>
                         </ul>
                     </li>
-                    <li>
-                        <a href="#" class="menu-item" data-page="cobranca">
+                    <li class="menu-item-with-submenu">
+                        <a href="#" class="menu-item" data-page="cobranca" id="menu-cobranca">
                             <span class="icon">💰</span>
                             <span class="text">Cobrança</span>
+                            <span class="arrow">▼</span>
                         </a>
+                        <ul class="submenu" id="submenu-cobranca">
+                            <li>
+                                <a href="#" class="submenu-item" data-page="cobranca-consulta">
+                                    <span class="icon">🔍</span>
+                                    <span class="text">Consulta</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="#" class="submenu-item" data-page="cobranca-baixa-manual">
+                                    <span class="icon">✏️</span>
+                                    <span class="text">Baixa Manual</span>
+                                </a>
+                            </li>
+                            <li>
+                                <a href="#" class="submenu-item" data-page="cobranca-automatica">
+                                    <span class="icon">⚙️</span>
+                                    <span class="text">Cobrança Automática</span>
+                                </a>
+                            </li>
+                        </ul>
                     </li>
                     <li>
                         <a href="#" class="menu-item" data-page="relatorios">

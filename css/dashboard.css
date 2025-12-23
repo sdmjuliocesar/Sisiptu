@@ -327,6 +327,19 @@ body {
 /* Formulário de usuários */
 .form-section {
     margin-bottom: 30px;
+    padding: 20px;
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 8px;
+}
+
+.form-section h4 {
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 2px solid #2d8659;
+    color: #2d8659;
+    font-size: 16px;
+    font-weight: 600;
 }
 
 .form-row {
@@ -350,13 +363,53 @@ body {
 
 .form-group-inline input[type="text"],
 .form-group-inline input[type="email"],
-.form-group-inline select {
+.form-group-inline input[type="number"],
+.form-group-inline select,
+.form-group-inline textarea {
     width: 100%;
     padding: 10px 12px;
     border-radius: 6px;
     border: 1px solid #ccc;
     font-size: 14px;
     transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.form-group-inline textarea {
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    resize: vertical;
+    min-height: 100px;
+    line-height: 1.5;
+    color: #000;
+}
+
+.form-group-inline textarea.required {
+    color: #000;
+}
+
+/* Campos de valores monetários e numéricos com texto preto */
+.currency-input,
+.numeric-input {
+    color: #000 !important;
+}
+
+.form-group-inline input.currency-input,
+.form-group-inline input.numeric-input {
+    color: #000 !important;
+}
+
+/* Garantir que campos obrigatórios de texto e número tenham cor preta */
+.form-group-inline input[type="text"].required,
+.form-group-inline input[type="number"].required {
+    color: #000 !important;
+}
+
+/* Select com cor preta */
+.form-group-inline select.required {
+    color: #000;
+}
+
+.form-group-inline select.required option {
+    color: #000;
 }
 
 .form-group-inline input[type="text"]:focus,
@@ -498,6 +551,65 @@ body {
     background: #cfcfcf;
 }
 
+/* Botões de filtro para consulta de cobranças */
+.btn-filter {
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 2px solid #ddd;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+    background: #fff;
+    color: #333;
+}
+
+.btn-filter:hover {
+    background: #f0f0f0;
+    border-color: #2d8659;
+}
+
+.btn-filter.active {
+    background: #2d8659;
+    color: #fff;
+    border-color: #2d8659;
+}
+
+/* Botão de excluir parcelas - estilo melhorado */
+#btn-excluir-parcelas-gerar-iptu {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: #fff;
+    padding: 10px 20px;
+    border-radius: 6px;
+    border: none;
+    cursor: pointer;
+    font-size: 14px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+    position: relative;
+    overflow: hidden;
+}
+
+#btn-excluir-parcelas-gerar-iptu:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.4);
+    transform: translateY(-1px);
+}
+
+#btn-excluir-parcelas-gerar-iptu:active {
+    transform: translateY(0);
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.3);
+}
+
+#btn-excluir-parcelas-gerar-iptu:disabled {
+    background: #ccc;
+    color: #666;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+}
+
 .table-section h4 {
     margin-bottom: 10px;
     color: #2d8659;
@@ -505,6 +617,33 @@ body {
 
 .table-wrapper {
     overflow-x: auto;
+    overflow-y: visible;
+    width: 100%;
+    max-width: 100%;
+    -webkit-overflow-scrolling: touch;
+    position: relative;
+    /* Para Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: #888 #f1f1f1;
+}
+
+/* Estilo da barra de rolagem horizontal */
+.table-wrapper::-webkit-scrollbar {
+    height: 10px;
+}
+
+.table-wrapper::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 5px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 5px;
+}
+
+.table-wrapper::-webkit-scrollbar-thumb:hover {
+    background: #555;
 }
 
 .table {
@@ -514,6 +653,12 @@ body {
     background: #fff;
     border-radius: 8px;
     overflow: hidden;
+    min-width: max-content; /* Garante que a tabela não encolha além do conteúdo */
+}
+
+/* Tabela de pesquisar contratos - largura mínima para rolagem horizontal */
+#tabela-pesquisar-contratos {
+    min-width: 2000px; /* Largura mínima para garantir rolagem horizontal */
 }
 
 .table thead {
@@ -522,9 +667,53 @@ body {
 
 .table th,
 .table td {
-    padding: 10px 12px;
+    padding: 12px 15px;
     border-bottom: 1px solid #e0e0e0;
     text-align: left;
+}
+
+.data-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+}
+
+.data-table th,
+.data-table td {
+    padding: 12px 15px;
+    border-bottom: 1px solid #e0e0e0;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.data-table th {
+    background: #f0f0f0;
+    font-weight: 600;
+    color: #2d8659;
+    padding: 14px 15px;
+    border-bottom: 2px solid #2d8659;
+}
+
+.data-table th:first-child,
+.data-table td:first-child {
+    padding-left: 20px;
+}
+
+.data-table th:last-child,
+.data-table td:last-child {
+    padding-right: 20px;
+}
+
+.data-table tbody tr {
+    transition: background-color 0.2s ease;
+}
+
+.data-table tbody tr:hover {
+    background: #f5f9f7;
+}
+
+.data-table tbody td {
+    padding: 12px 15px;
 }
 
 .table tbody tr:hover {
