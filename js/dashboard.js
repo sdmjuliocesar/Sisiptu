@@ -5458,10 +5458,133 @@ function carregarPagina(page) {
             conteudo = `
                 <div class="page-content" id="cobranca-baixa-manual-page">
                     <h3>✏️ Baixa Manual de Cobranças</h3>
-                    <p>Registre manualmente o pagamento de cobranças de IPTU.</p>
-                    <p>Funcionalidade em desenvolvimento...</p>
+                    <p>Registre manualmente a liquidação ou estorno de parcelas de IPTU diretamente na tabela de cobranças.</p>
+                    
+                    <div class="form-section" style="background: #f8f9fa; padding: 20px; border-radius: 8px; margin-bottom: 20px;">
+                        <h4 style="margin-bottom: 15px; color: #2d8659;">Filtros de Pesquisa</h4>
+                        <form id="form-baixa-manual-filtros">
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="bm-empreendimento"><strong>Empreendimento *</strong></label>
+                                    <select id="bm-empreendimento" name="empreendimento_id" title="Empreendimento" required>
+                                        <option value="">Selecione...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="bm-modulo"><strong>Módulo *</strong></label>
+                                    <select id="bm-modulo" name="modulo_id" title="Módulo" required>
+                                        <option value="">Selecione...</option>
+                                    </select>
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="bm-contrato"><strong>Contrato *</strong></label>
+                                    <div style="display: flex; gap: 5px; align-items: flex-end;">
+                                        <input type="text" id="bm-contrato" name="contrato" placeholder="Número do contrato" required style="flex: 1;">
+                                        <button type="button" id="btn-pesquisar-contrato-bm" class="btn btn-primary" title="Pesquisar contrato" style="padding: 10px 15px; white-space: nowrap;">🔍</button>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="bm-titulo"><strong>Número do Título *</strong></label>
+                                    <input type="text" id="bm-titulo" name="titulo" placeholder="Número do título" required>
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="bm-status-pago">Status de Pagamento</label>
+                                    <select id="bm-status-pago" name="status_pago">
+                                        <option value="">Todos</option>
+                                        <option value="N">Não Pagas</option>
+                                        <option value="S">Pagas</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions" style="margin-top: 15px;">
+                                <button type="button" id="btn-pesquisar-baixa-manual" class="btn btn-primary">🔍 Pesquisar</button>
+                                <button type="button" id="btn-limpar-filtros-bm" class="btn btn-secondary">🔄 Limpar Filtros</button>
+                            </div>
+                        </form>
+                    </div>
+                    
+                    <div class="table-section">
+                        <h4>Cobranças para Baixa/Estorno</h4>
+                        <div id="bm-mensagem" class="mensagem" style="margin-bottom: 10px; display: none;"></div>
+                        <div class="table-wrapper">
+                            <table id="table-baixa-manual" class="data-table">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>Título</th>
+                                        <th>Empreendimento</th>
+                                        <th>Módulo</th>
+                                        <th>Contrato</th>
+                                        <th>Cliente</th>
+                                        <th>Data Vencimento</th>
+                                        <th>Valor Mensal</th>
+                                        <th>Multas</th>
+                                        <th>Juros</th>
+                                        <th>Valor Total</th>
+                                        <th>Status</th>
+                                        <th>Data Pagamento</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tbody-baixa-manual">
+                                    <tr>
+                                        <td colspan="14" style="text-align: center; padding: 20px;">Use os filtros acima para pesquisar cobranças.</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Modal para Baixa/Estorno -->
+                    <div id="modal-baixa-manual" class="modal" style="display: none;">
+                        <div class="modal-content" style="max-width: 600px;">
+                            <span class="close-modal" id="close-modal-baixa">&times;</span>
+                            <h3 id="modal-baixa-titulo">Baixar/Estornar Cobrança</h3>
+                            <form id="form-baixa-manual-operacao">
+                                <input type="hidden" id="bm-cobranca-id" name="cobranca_id">
+                                
+                                <div class="form-row">
+                                    <div class="form-group-inline">
+                                        <label for="bm-tipo-operacao"><strong>Tipo de Operação</strong></label>
+                                        <select id="bm-tipo-operacao" name="tipo_operacao" required>
+                                            <option value="baixar">Baixar (Liquidação)</option>
+                                            <option value="estornar">Estornar</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group-inline">
+                                        <label for="bm-data-pagamento"><strong>Data de Pagamento</strong></label>
+                                        <input type="date" id="bm-data-pagamento" name="data_pagamento" required>
+                                    </div>
+                                    <div class="form-group-inline">
+                                        <label for="bm-data-baixa"><strong>Data de Baixa</strong></label>
+                                        <input type="date" id="bm-data-baixa" name="data_baixa" required>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-row">
+                                    <div class="form-group-inline" style="flex: 1;">
+                                        <label for="bm-observacao">Observação</label>
+                                        <textarea id="bm-observacao" name="observacao" rows="3" placeholder="Observação sobre a operação" style="resize: vertical;"></textarea>
+                                    </div>
+                                </div>
+                                
+                                <div class="form-actions" style="margin-top: 15px;">
+                                    <button type="submit" id="btn-confirmar-baixa" class="btn btn-success">Confirmar</button>
+                                    <button type="button" id="btn-cancelar-baixa" class="btn btn-secondary">Cancelar</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
                 </div>
             `;
+            setTimeout(inicializarBaixaManual, 0);
             break;
             
         case 'cobranca-automatica':
@@ -7114,9 +7237,6 @@ function mostrarModalExtrato(empreendimentoId, moduloId, contrato, cliente, para
                 <button type="button" id="btn-extrato-imprimir" class="btn-primary" style="width: 100%; padding: 12px;">
                     🖨️ Imprimir
                 </button>
-                <button type="button" id="btn-extrato-pdf" class="btn-primary" style="width: 100%; padding: 12px;">
-                    📄 Gerar PDF
-                </button>
                 <button type="button" id="btn-extrato-email" class="btn-primary" style="width: 100%; padding: 12px;">
                     📧 Enviar por Email
                 </button>
@@ -7135,11 +7255,6 @@ function mostrarModalExtrato(empreendimentoId, moduloId, contrato, cliente, para
     // Event listeners
     document.getElementById('btn-extrato-imprimir').addEventListener('click', function() {
         imprimirExtrato(params);
-        document.body.removeChild(modal);
-    });
-    
-    document.getElementById('btn-extrato-pdf').addEventListener('click', function() {
-        gerarPDFExtrato(params);
         document.body.removeChild(modal);
     });
     
@@ -8037,6 +8152,403 @@ function importarClientes(diretorio, arquivo, delimitador, primeiraLinhaCabecalh
             btnImportar.disabled = false;
             btnImportar.textContent = '📥 Importar Clientes';
         });
+}
+
+// ========== Baixa Manual (trabalha diretamente com tabela cobranca) ==========
+function inicializarBaixaManual() {
+    const formFiltros = document.getElementById('form-baixa-manual-filtros');
+    const btnPesquisar = document.getElementById('btn-pesquisar-baixa-manual');
+    const btnLimpar = document.getElementById('btn-limpar-filtros-bm');
+    const tabelaBody = document.getElementById('tbody-baixa-manual');
+    const modal = document.getElementById('modal-baixa-manual');
+    const formOperacao = document.getElementById('form-baixa-manual-operacao');
+    const btnCancelar = document.getElementById('btn-cancelar-baixa');
+    const closeModal = document.getElementById('close-modal-baixa');
+
+    if (!formFiltros || !tabelaBody) return;
+
+    // Carregar empreendimentos
+    carregarEmpreendimentosSelectBaixaManual();
+
+    // Quando selecionar empreendimento, filtrar módulos
+    const selectEmp = document.getElementById('bm-empreendimento');
+    if (selectEmp) {
+        selectEmp.addEventListener('change', function() {
+            const empId = this.value;
+            carregarModulosSelectBaixaManual(empId);
+        });
+    }
+
+    // Preencher data de pagamento e baixa com hoje
+    const hoje = new Date();
+    const dataFormatada = hoje.toISOString().split('T')[0];
+    const campoDataPagamento = document.getElementById('bm-data-pagamento');
+    const campoDataBaixa = document.getElementById('bm-data-baixa');
+    if (campoDataPagamento) campoDataPagamento.value = dataFormatada;
+    if (campoDataBaixa) campoDataBaixa.value = dataFormatada;
+
+    // Botão Pesquisar Contrato
+    const btnPesquisarContrato = document.getElementById('btn-pesquisar-contrato-bm');
+    if (btnPesquisarContrato) {
+        btnPesquisarContrato.addEventListener('click', function() {
+            pesquisarContratoBaixaManual();
+        });
+    }
+
+    // Botão Pesquisar
+    if (btnPesquisar) {
+        btnPesquisar.addEventListener('click', function() {
+            pesquisarCobrancasBaixaManual();
+        });
+    }
+
+    // Botão Limpar
+    if (btnLimpar) {
+        btnLimpar.addEventListener('click', function() {
+            limparTelaBaixaManual();
+        });
+    }
+
+    function limparTelaBaixaManual() {
+        formFiltros.reset();
+        document.getElementById('bm-modulo').innerHTML = '<option value="">Selecione...</option>';
+        tabelaBody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px;">Use os filtros acima para pesquisar cobranças.</td></tr>';
+        mostrarMensagemBaixaManual('', '');
+    }
+
+    function pesquisarContratoBaixaManual() {
+        const empreendimentoId = document.getElementById('bm-empreendimento').value;
+        const moduloId = document.getElementById('bm-modulo').value;
+        const contrato = document.getElementById('bm-contrato').value.trim();
+        const titulo = document.getElementById('bm-titulo').value.trim();
+
+        // Validar campos obrigatórios
+        if (!empreendimentoId) {
+            mostrarMensagemBaixaManual('Selecione o Empreendimento.', 'erro');
+            document.getElementById('bm-empreendimento').focus();
+            return;
+        }
+
+        if (!moduloId) {
+            mostrarMensagemBaixaManual('Selecione o Módulo.', 'erro');
+            document.getElementById('bm-modulo').focus();
+            return;
+        }
+
+        if (!contrato) {
+            mostrarMensagemBaixaManual('Informe o número do Contrato.', 'erro');
+            document.getElementById('bm-contrato').focus();
+            return;
+        }
+
+        if (!titulo) {
+            mostrarMensagemBaixaManual('Informe o Número do Título.', 'erro');
+            document.getElementById('bm-titulo').focus();
+            return;
+        }
+
+        // Pesquisar contrato e listar todas as parcelas
+        const params = new URLSearchParams();
+        params.append('action', 'pesquisar-contrato');
+        params.append('empreendimento_id', empreendimentoId);
+        params.append('modulo_id', moduloId);
+        params.append('contrato', contrato);
+        params.append('titulo', titulo);
+
+        mostrarMensagemBaixaManual('Pesquisando contrato...', 'info');
+
+        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso) {
+                    mostrarMensagemBaixaManual(data.mensagem || 'Contrato não encontrado.', 'erro');
+                    limparTelaBaixaManual();
+                    return;
+                }
+
+                const cobrancas = data.cobrancas || [];
+                if (cobrancas.length === 0) {
+                    mostrarMensagemBaixaManual('Nenhuma parcela encontrada para este contrato.', 'erro');
+                    limparTelaBaixaManual();
+                    return;
+                }
+
+                // Listar todas as parcelas no grid
+                exibirCobrancasNoGrid(cobrancas);
+                mostrarMensagemBaixaManual(`${cobrancas.length} parcela(s) encontrada(s) para o contrato ${contrato}.`, 'sucesso');
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemBaixaManual('Erro ao pesquisar contrato.', 'erro');
+                limparTelaBaixaManual();
+            });
+    }
+
+    // Fechar modal
+    if (closeModal) {
+        closeModal.addEventListener('click', function() {
+            modal.style.display = 'none';
+        });
+    }
+
+    if (btnCancelar) {
+        btnCancelar.addEventListener('click', function() {
+            modal.style.display = 'none';
+        });
+    }
+
+    // Form submit (baixar/estornar)
+    if (formOperacao) {
+        formOperacao.addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const cobrancaId = document.getElementById('bm-cobranca-id').value;
+            const tipoOperacao = document.getElementById('bm-tipo-operacao').value;
+            const dataPagamento = document.getElementById('bm-data-pagamento').value;
+            const dataBaixa = document.getElementById('bm-data-baixa').value;
+            const observacao = document.getElementById('bm-observacao').value.trim();
+
+            if (!cobrancaId || !tipoOperacao || !dataPagamento || !dataBaixa) {
+                mostrarMensagemBaixaManual('Preencha todos os campos obrigatórios.', 'erro');
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('action', 'baixar-estornar');
+            formData.append('cobranca_id', cobrancaId);
+            formData.append('tipo_operacao', tipoOperacao);
+            formData.append('data_pagamento', dataPagamento);
+            formData.append('data_baixa', dataBaixa);
+            formData.append('observacao', observacao);
+
+            fetch('/SISIPTU/php/baixa_manual_api.php', {
+                method: 'POST',
+                body: formData
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.sucesso) {
+                    mostrarMensagemBaixaManual(data.mensagem || 'Operação realizada com sucesso!', 'sucesso');
+                    modal.style.display = 'none';
+                    formOperacao.reset();
+                    pesquisarCobrancasBaixaManual();
+                } else {
+                    mostrarMensagemBaixaManual(data.mensagem || 'Erro ao realizar operação.', 'erro');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemBaixaManual('Erro ao realizar operação.', 'erro');
+            });
+        });
+    }
+
+    function pesquisarCobrancasBaixaManual() {
+        const empreendimentoId = document.getElementById('bm-empreendimento').value;
+        const moduloId = document.getElementById('bm-modulo').value;
+        const contrato = document.getElementById('bm-contrato').value.trim();
+        const titulo = document.getElementById('bm-titulo').value.trim();
+        const statusPago = document.getElementById('bm-status-pago').value;
+
+        // Validar campos obrigatórios
+        if (!empreendimentoId) {
+            mostrarMensagemBaixaManual('Selecione o Empreendimento.', 'erro');
+            document.getElementById('bm-empreendimento').focus();
+            return;
+        }
+
+        if (!moduloId) {
+            mostrarMensagemBaixaManual('Selecione o Módulo.', 'erro');
+            document.getElementById('bm-modulo').focus();
+            return;
+        }
+
+        if (!contrato) {
+            mostrarMensagemBaixaManual('Informe o número do Contrato.', 'erro');
+            document.getElementById('bm-contrato').focus();
+            return;
+        }
+
+        if (!titulo) {
+            mostrarMensagemBaixaManual('Informe o Número do Título.', 'erro');
+            document.getElementById('bm-titulo').focus();
+            return;
+        }
+
+        const params = new URLSearchParams();
+        params.append('empreendimento_id', empreendimentoId);
+        params.append('modulo_id', moduloId);
+        params.append('contrato', contrato);
+        params.append('titulo', titulo);
+        if (statusPago) params.append('status_pago', statusPago);
+        params.append('action', 'pesquisar');
+
+        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso) {
+                    tabelaBody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px;">Erro ao pesquisar cobranças.</td></tr>';
+                    mostrarMensagemBaixaManual(data.mensagem || 'Erro ao pesquisar cobranças.', 'erro');
+                    return;
+                }
+
+                const cobrancas = data.cobrancas || [];
+                if (cobrancas.length === 0) {
+                    tabelaBody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px;">Nenhuma cobrança encontrada com os filtros informados.</td></tr>';
+                    return;
+                }
+
+                exibirCobrancasNoGrid(cobrancas);
+                mostrarMensagemBaixaManual(`${cobrancas.length} cobrança(s) encontrada(s).`, 'sucesso');
+            })
+            .catch(err => {
+                console.error(err);
+                tabelaBody.innerHTML = '<tr><td colspan="14" style="text-align: center; padding: 20px;">Erro ao pesquisar cobranças.</td></tr>';
+                mostrarMensagemBaixaManual('Erro ao pesquisar cobranças.', 'erro');
+            });
+    }
+
+    function exibirCobrancasNoGrid(cobrancas) {
+        const tabelaBody = document.getElementById('tbody-baixa-manual');
+        if (!tabelaBody) return;
+
+        tabelaBody.innerHTML = '';
+        cobrancas.forEach(c => {
+            const tr = document.createElement('tr');
+            const valorTotal = calcularValorTotalCobrancaBaixa(c);
+            const statusPago = c.pago === 'S' ? '<span style="color: green; font-weight: bold;">Pago</span>' : '<span style="color: red; font-weight: bold;">Não Pago</span>';
+            const btnAcao = c.pago === 'S' 
+                ? `<button class="btn-edit" onclick="abrirModalBaixaManual(${c.id}, 'estornar')" title="Estornar">↩️ Estornar</button>`
+                : `<button class="btn-success" onclick="abrirModalBaixaManual(${c.id}, 'baixar')" title="Baixar">✓ Baixar</button>`;
+            
+            tr.innerHTML = `
+                <td>${c.id}</td>
+                <td>${c.titulo || '-'}</td>
+                <td>${c.empreendimento_nome || '-'}</td>
+                <td>${c.modulo_nome || '-'}</td>
+                <td>${c.contrato || '-'}</td>
+                <td>${c.cliente_nome || '-'}</td>
+                <td>${c.datavencimento ? formatarData(c.datavencimento) : '-'}</td>
+                <td>${c.valor_mensal ? parseFloat(c.valor_mensal).toFixed(2).replace('.', ',') : '0,00'}</td>
+                <td>${c.multas ? parseFloat(c.multas).toFixed(2).replace('.', ',') : '0,00'}</td>
+                <td>${c.juros ? parseFloat(c.juros).toFixed(2).replace('.', ',') : '0,00'}</td>
+                <td>${valorTotal}</td>
+                <td>${statusPago}</td>
+                <td>${c.datapagamento ? formatarData(c.datapagamento) : '-'}</td>
+                <td>${btnAcao}</td>
+            `;
+            tabelaBody.appendChild(tr);
+        });
+    }
+
+    function calcularValorTotalCobrancaBaixa(c) {
+        const valorMensal = parseFloat(c.valor_mensal || 0);
+        const multas = parseFloat(c.multas || 0);
+        const juros = parseFloat(c.juros || 0);
+        const total = valorMensal + multas + juros;
+        return total.toFixed(2).replace('.', ',');
+    }
+
+    // Função global para abrir modal
+    window.abrirModalBaixaManual = function(cobrancaId, tipoOperacao) {
+        document.getElementById('bm-cobranca-id').value = cobrancaId;
+        document.getElementById('bm-tipo-operacao').value = tipoOperacao;
+        document.getElementById('modal-baixa-titulo').textContent = tipoOperacao === 'baixar' ? 'Baixar Cobrança (Liquidação)' : 'Estornar Cobrança';
+        
+        const hoje = new Date();
+        const dataFormatada = hoje.toISOString().split('T')[0];
+        document.getElementById('bm-data-pagamento').value = dataFormatada;
+        document.getElementById('bm-data-baixa').value = dataFormatada;
+        document.getElementById('bm-observacao').value = '';
+        
+        modal.style.display = 'block';
+    };
+}
+
+function carregarEmpreendimentosSelectBaixaManual() {
+    const select = document.getElementById('bm-empreendimento');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Selecione...</option>';
+
+    fetch('/SISIPTU/php/empreendimentos_api.php?action=list')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso) {
+                return;
+            }
+
+            const emps = data.empreendimentos || [];
+            emps.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id;
+                opt.textContent = e.nome;
+                select.appendChild(opt);
+            });
+        })
+        .catch(err => {
+            console.error(err);
+        });
+}
+
+function carregarModulosSelectBaixaManual(empreendimentoId = null) {
+    const select = document.getElementById('bm-modulo');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Selecione...</option>';
+
+    let url = '/SISIPTU/php/modulos_api.php?action=list';
+    if (empreendimentoId) {
+        url += '&empreendimento_id=' + encodeURIComponent(empreendimentoId);
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso) return;
+
+            const mods = data.modulos || [];
+            if (empreendimentoId) {
+                mods.forEach(m => {
+                    if (m.empreendimento_id == empreendimentoId) {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.textContent = m.nome;
+                        select.appendChild(opt);
+                    }
+                });
+            } else {
+                mods.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = m.nome;
+                    select.appendChild(opt);
+                });
+            }
+        })
+        .catch(err => {
+            console.error(err);
+        });
+}
+
+function mostrarMensagemBaixaManual(texto, tipo) {
+    const msg = document.getElementById('bm-mensagem');
+    if (!msg) return;
+
+    if (!texto || !tipo) {
+        msg.style.display = 'none';
+        return;
+    }
+
+    msg.textContent = texto;
+    msg.className = 'mensagem ' + tipo;
+    msg.style.display = 'block';
+
+    if (tipo === 'sucesso') {
+        setTimeout(() => {
+            msg.style.display = 'none';
+        }, 5000);
+    }
 }
 
 

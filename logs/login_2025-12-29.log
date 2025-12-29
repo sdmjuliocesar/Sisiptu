@@ -1,0 +1,10 @@
+[2025-12-29 13:49:36] [LOGIN] Login realizado com sucesso para o usuário: admin | IP: ::1 | {"usuario":"admin","sucesso":true,"motivo":"Senha correta (comparação direta)","usuario_encontrado":true,"usuario_id":1,"senha_correta":true,"senha_fornecida_length":6,"senha_banco_length":6,"comparacao_direta":true}
+[2025-12-29 19:28:29] [LOGIN] Login realizado com sucesso para o usuário: admin | IP: ::1 | {"usuario":"admin","sucesso":true,"motivo":"Senha correta (comparação direta)","usuario_encontrado":true,"usuario_id":1,"senha_correta":true,"senha_fornecida_length":6,"senha_banco_length":6,"comparacao_direta":true}
+[2025-12-29 19:36:50] [ERRO] Erro no CRUD de baixa manual: SQLSTATE[42P01]: Undefined table: 7 ERRO:  relação "baixa_manual" não existe
+LINE 27:                 FROM baixa_manual bm
+                              ^ | IP: ::1 | {"action":"list","erro":"SQLSTATE[42P01]: Undefined table: 7 ERRO:  relação \"baixa_manual\" não existe\nLINE 27:                 FROM baixa_manual bm\n                              ^","arquivo":"C:\\xampp\\htdocs\\SISIPTU\\php\\baixa_manual_api.php","linha":32}
+[2025-12-29 21:09:04] [LOGIN] Login realizado com sucesso para o usuário: admin | IP: ::1 | {"usuario":"admin","sucesso":true,"motivo":"Senha correta (comparação direta)","usuario_encontrado":true,"usuario_id":1,"senha_correta":true,"senha_fornecida_length":6,"senha_banco_length":6,"comparacao_direta":true}
+[2025-12-29 21:11:30] [ERRO] Erro no processamento de baixa manual: SQLSTATE[42703]: Undefined column: 7 ERRO:  coluna c.data_vencimento não existe
+LINE 12:                     c.data_vencimento,
+                             ^
+HINT:  Talvez você queira fazer referência à coluna "c.datavencimento". | IP: ::1 | {"action":"pesquisar","erro":"SQLSTATE[42703]: Undefined column: 7 ERRO:  coluna c.data_vencimento não existe\nLINE 12:                     c.data_vencimento,\n                             ^\nHINT:  Talvez você queira fazer referência à coluna \"c.datavencimento\".","arquivo":"C:\\xampp\\htdocs\\SISIPTU\\php\\baixa_manual_api.php","linha":175}

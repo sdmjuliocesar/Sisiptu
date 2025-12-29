@@ -1,1 +1,0 @@
-[2025-12-11 23:22:34] [LOGIN] Login realizado com sucesso para o usuário: admin | IP: ::1 | {"usuario":"admin","sucesso":true,"motivo":"Senha correta (comparação direta)","usuario_encontrado":true,"usuario_id":1,"senha_correta":true,"senha_fornecida_length":6,"senha_banco_length":6,"comparacao_direta":true}

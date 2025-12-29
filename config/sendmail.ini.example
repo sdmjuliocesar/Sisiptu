@@ -1,0 +1,60 @@
+; ============================================
+; Arquivo de Configuração do Sendmail
+; ============================================
+; 
+; INSTRUÇÕES:
+; 1. Copie este arquivo para: C:\xampp\sendmail\sendmail.ini
+; 2. Ajuste as configurações abaixo conforme seu provedor de email
+; 3. Reinicie o Apache no XAMPP
+;
+; ============================================
+
+[sendmail]
+
+; ============================================
+; CONFIGURAÇÃO PARA GMAIL
+; ============================================
+smtp_server=smtp.gmail.com
+smtp_port=587
+error_logfile=error.log
+debug_logfile=debug.log
+auth_username=seu-email@gmail.com
+auth_password=sua-senha-app-gmail
+force_sender=seu-email@gmail.com
+
+; IMPORTANTE para Gmail:
+; - Use uma SENHA DE APP (não a senha normal)
+; - Ative verificação em 2 etapas
+; - Gere senha em: https://myaccount.google.com/apppasswords
+
+; ============================================
+; CONFIGURAÇÃO PARA OUTLOOK/HOTMAIL
+; ============================================
+; smtp_server=smtp-mail.outlook.com
+; smtp_port=587
+; error_logfile=error.log
+; debug_logfile=debug.log
+; auth_username=seu-email@outlook.com
+; auth_password=sua-senha-outlook
+; force_sender=seu-email@outlook.com
+
+; ============================================
+; CONFIGURAÇÃO PARA SERVIDOR SMTP PRÓPRIO
+; ============================================
+; smtp_server=mail.seudominio.com.br
+; smtp_port=587
+; error_logfile=error.log
+; debug_logfile=debug.log
+; auth_username=seu-email@seudominio.com.br
+; auth_password=sua-senha
+; force_sender=seu-email@seudominio.com.br
+
+; ============================================
+; CONFIGURAÇÕES AVANÇADAS
+; ============================================
+; hostname=localhost
+; timeout=30
+
+
+
+

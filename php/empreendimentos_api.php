@@ -29,38 +29,11 @@ try {
 
     switch ($action) {
         case 'list':
-            // Verificar se a coluna banco_id existe antes de fazer o JOIN
-            try {
-                $checkColumn = $pdo->query("
-                    SELECT COUNT(*) 
-                    FROM information_schema.columns 
-                    WHERE table_schema = 'public'
-                    AND table_name = 'empreendimentos' 
-                    AND column_name = 'banco_id'
-                ")->fetchColumn();
-                
-                $hasBancoId = ($checkColumn > 0);
-            } catch (Exception $e) {
-                $hasBancoId = false;
-            }
-            
-            if ($hasBancoId) {
-                $stmt = $pdo->query("
-                    SELECT e.id, e.nome, e.descricao, e.endereco, e.bairro, e.cidade, e.uf, e.cep, e.banco_id, e.ativo, e.data_criacao, e.data_atualizacao,
-                           b.banco as banco_nome, b.conta as banco_conta
-                    FROM empreendimentos e
-                    LEFT JOIN bancos b ON e.banco_id = b.id
-                    ORDER BY e.id
-                ");
-            } else {
-                // Se a coluna não existe, fazer SELECT sem banco_id e sem JOIN
-                $stmt = $pdo->query("
-                    SELECT e.id, e.nome, e.descricao, e.endereco, e.bairro, e.cidade, e.uf, e.cep, e.ativo, e.data_criacao, e.data_atualizacao,
-                           NULL as banco_id, NULL as banco_nome, NULL as banco_conta
-                    FROM empreendimentos e
-                    ORDER BY e.id
-                ");
-            }
+            $stmt = $pdo->query("
+                SELECT id, nome, descricao, endereco, bairro, cidade, uf, cep, ativo, data_criacao, data_atualizacao
+                FROM empreendimentos
+                ORDER BY id
+            ");
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             jsonResponseEmp(true, 'Lista de empreendimentos carregada com sucesso.', ['empreendimentos' => $rows]);
             break;
@@ -71,37 +44,11 @@ try {
                 jsonResponseEmp(false, 'ID inválido.');
             }
 
-            // Verificar se a coluna banco_id existe
-            try {
-                $checkColumn = $pdo->query("
-                    SELECT COUNT(*) 
-                    FROM information_schema.columns 
-                    WHERE table_schema = 'public'
-                    AND table_name = 'empreendimentos' 
-                    AND column_name = 'banco_id'
-                ")->fetchColumn();
-                
-                $hasBancoId = ($checkColumn > 0);
-            } catch (Exception $e) {
-                $hasBancoId = false;
-            }
-            
-            if ($hasBancoId) {
-                $stmt = $pdo->prepare("
-                    SELECT e.id, e.nome, e.descricao, e.endereco, e.bairro, e.cidade, e.uf, e.cep, e.banco_id, e.ativo,
-                           b.banco as banco_nome, b.conta as banco_conta
-                    FROM empreendimentos e
-                    LEFT JOIN bancos b ON e.banco_id = b.id
-                    WHERE e.id = :id
-                ");
-            } else {
-                $stmt = $pdo->prepare("
-                    SELECT e.id, e.nome, e.descricao, e.endereco, e.bairro, e.cidade, e.uf, e.cep, e.ativo,
-                           NULL as banco_id, NULL as banco_nome, NULL as banco_conta
-                    FROM empreendimentos e
-                    WHERE e.id = :id
-                ");
-            }
+            $stmt = $pdo->prepare("
+                SELECT id, nome, descricao, endereco, bairro, cidade, uf, cep, ativo
+                FROM empreendimentos
+                WHERE id = :id
+            ");
             $stmt->bindParam(':id', $id, PDO::PARAM_INT);
             $stmt->execute();
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -121,39 +68,16 @@ try {
             $cidade = trim($_POST['cidade'] ?? '');
             $uf = strtoupper(trim($_POST['uf'] ?? ''));
             $cep = trim($_POST['cep'] ?? '');
-            $banco_id = isset($_POST['banco_id']) && $_POST['banco_id'] !== '' ? (int)$_POST['banco_id'] : null;
             $ativo = isset($_POST['ativo']) && $_POST['ativo'] === '1';
 
             if ($nome === '') {
                 jsonResponseEmp(false, 'O campo Nome do Empreendimento é obrigatório.');
             }
 
-            // Verificar se a coluna banco_id existe
-            try {
-                $checkColumn = $pdo->query("
-                    SELECT COUNT(*) 
-                    FROM information_schema.columns 
-                    WHERE table_schema = 'public'
-                    AND table_name = 'empreendimentos' 
-                    AND column_name = 'banco_id'
-                ")->fetchColumn();
-                
-                $hasBancoId = ($checkColumn > 0);
-            } catch (Exception $e) {
-                $hasBancoId = false;
-            }
-            
-            if ($hasBancoId) {
-                $stmt = $pdo->prepare("
-                    INSERT INTO empreendimentos (nome, descricao, endereco, bairro, cidade, uf, cep, banco_id, ativo)
-                    VALUES (:nome, :descricao, :endereco, :bairro, :cidade, :uf, :cep, :banco_id, :ativo)
-                ");
-            } else {
-                $stmt = $pdo->prepare("
-                    INSERT INTO empreendimentos (nome, descricao, endereco, bairro, cidade, uf, cep, ativo)
-                    VALUES (:nome, :descricao, :endereco, :bairro, :cidade, :uf, :cep, :ativo)
-                ");
-            }
+            $stmt = $pdo->prepare("
+                INSERT INTO empreendimentos (nome, descricao, endereco, bairro, cidade, uf, cep, ativo)
+                VALUES (:nome, :descricao, :endereco, :bairro, :cidade, :uf, :cep, :ativo)
+            ");
             $stmt->bindParam(':nome', $nome);
             $stmt->bindParam(':descricao', $descricao);
             $stmt->bindParam(':endereco', $endereco);
@@ -161,9 +85,6 @@ try {
             $stmt->bindParam(':cidade', $cidade);
             $stmt->bindParam(':uf', $uf);
             $stmt->bindParam(':cep', $cep);
-            if ($hasBancoId) {
-                $stmt->bindParam(':banco_id', $banco_id, PDO::PARAM_INT);
-            }
             $stmt->bindValue(':ativo', $ativo, PDO::PARAM_BOOL);
             $stmt->execute();
 
@@ -179,7 +100,6 @@ try {
             $cidade = trim($_POST['cidade'] ?? '');
             $uf = strtoupper(trim($_POST['uf'] ?? ''));
             $cep = trim($_POST['cep'] ?? '');
-            $banco_id = isset($_POST['banco_id']) && $_POST['banco_id'] !== '' ? (int)$_POST['banco_id'] : null;
             $ativo = isset($_POST['ativo']) && $_POST['ativo'] === '1';
 
             if ($id <= 0) {
@@ -198,51 +118,19 @@ try {
                 jsonResponseEmp(false, 'Empreendimento não encontrado.');
             }
 
-            // Verificar se a coluna banco_id existe
-            try {
-                $checkColumn = $pdo->query("
-                    SELECT COUNT(*) 
-                    FROM information_schema.columns 
-                    WHERE table_schema = 'public'
-                    AND table_name = 'empreendimentos' 
-                    AND column_name = 'banco_id'
-                ")->fetchColumn();
-                
-                $hasBancoId = ($checkColumn > 0);
-            } catch (Exception $e) {
-                $hasBancoId = false;
-            }
-            
-            if ($hasBancoId) {
-                $stmt = $pdo->prepare("
-                    UPDATE empreendimentos
-                    SET nome = :nome,
-                        descricao = :descricao,
-                        endereco = :endereco,
-                        bairro = :bairro,
-                        cidade = :cidade,
-                        uf = :uf,
-                        cep = :cep,
-                        banco_id = :banco_id,
-                        ativo = :ativo,
-                        data_atualizacao = CURRENT_TIMESTAMP
-                    WHERE id = :id
-                ");
-            } else {
-                $stmt = $pdo->prepare("
-                    UPDATE empreendimentos
-                    SET nome = :nome,
-                        descricao = :descricao,
-                        endereco = :endereco,
-                        bairro = :bairro,
-                        cidade = :cidade,
-                        uf = :uf,
-                        cep = :cep,
-                        ativo = :ativo,
-                        data_atualizacao = CURRENT_TIMESTAMP
-                    WHERE id = :id
-                ");
-            }
+            $stmt = $pdo->prepare("
+                UPDATE empreendimentos
+                SET nome = :nome,
+                    descricao = :descricao,
+                    endereco = :endereco,
+                    bairro = :bairro,
+                    cidade = :cidade,
+                    uf = :uf,
+                    cep = :cep,
+                    ativo = :ativo,
+                    data_atualizacao = CURRENT_TIMESTAMP
+                WHERE id = :id
+            ");
             $stmt->bindParam(':nome', $nome);
             $stmt->bindParam(':descricao', $descricao);
             $stmt->bindParam(':endereco', $endereco);
@@ -250,9 +138,6 @@ try {
             $stmt->bindParam(':cidade', $cidade);
             $stmt->bindParam(':uf', $uf);
             $stmt->bindParam(':cep', $cep);
-            if ($hasBancoId) {
-                $stmt->bindParam(':banco_id', $banco_id, PDO::PARAM_INT);
-            }
             $stmt->bindValue(':ativo', $ativo, PDO::PARAM_BOOL);
             $stmt->bindParam(':id', $id, PDO::PARAM_INT);
             $stmt->execute();
@@ -276,19 +161,6 @@ try {
         default:
             jsonResponseEmp(false, 'Ação inválida.');
     }
-} catch (PDOException $e) {
-    // Capturar erro de violação de chave estrangeira
-    if ($e->getCode() === '23001') { // PostgreSQL restrict violation error code
-        jsonResponseEmp(false, 'Não é possível excluir o empreendimento pois ele possui módulos vinculados.');
-    } else {
-        registrarLog('ERRO', 'Erro no CRUD de empreendimentos: ' . $e->getMessage(), [
-            'action' => $action,
-            'erro' => $e->getMessage(),
-            'arquivo' => $e->getFile(),
-            'linha' => $e->getLine(),
-        ]);
-        jsonResponseEmp(false, 'Erro ao processar a requisição de empreendimentos. Detalhes: ' . $e->getMessage());
-    }
 } catch (Exception $e) {
     registrarLog('ERRO', 'Erro no CRUD de empreendimentos: ' . $e->getMessage(), [
         'action' => $action,
@@ -296,5 +168,6 @@ try {
         'arquivo' => $e->getFile(),
         'linha' => $e->getLine(),
     ]);
+
     jsonResponseEmp(false, 'Erro ao processar a requisição de empreendimentos. Detalhes: ' . $e->getMessage());
 }

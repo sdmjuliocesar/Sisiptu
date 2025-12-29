@@ -1,0 +1,48 @@
+; ============================================
+; Configurações de Email para php.ini
+; ============================================
+; 
+; INSTRUÇÕES:
+; 1. Abra o arquivo: C:\xampp\php\php.ini
+; 2. Localize a seção [mail function]
+; 3. Copie as configurações abaixo para essa seção
+; 4. Ajuste conforme necessário
+; 5. Reinicie o Apache
+;
+; ============================================
+
+[mail function]
+
+; Para Windows - Configuração SMTP
+SMTP = smtp.gmail.com
+smtp_port = 587
+sendmail_from = seu-email@gmail.com
+
+; Caminho do sendmail (Fake Sendmail)
+; Baixe de: https://www.glob.com.au/sendmail/
+; Extraia em: C:\xampp\sendmail\
+sendmail_path = "C:\xampp\sendmail\sendmail.exe -t"
+
+; ============================================
+; ALTERNATIVAS:
+; ============================================
+
+; Opção 1: Usar Mercury Mail (se instalado)
+; sendmail_path = "C:\xampp\MercuryMail\sendmail.exe -t"
+
+; Opção 2: Usar servidor SMTP direto (sem sendmail)
+; SMTP = smtp.gmail.com
+; smtp_port = 587
+; sendmail_from = seu-email@gmail.com
+; sendmail_path = 
+
+; ============================================
+; NOTAS:
+; ============================================
+; - Para Gmail, use Senha de App (não senha normal)
+; - Para produção, considere usar PHPMailer
+; - Verifique os logs em: C:\xampp\sendmail\error.log
+
+
+
+

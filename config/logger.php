@@ -33,9 +33,8 @@ function registrarLog($tipo, $mensagem, $dados = []) {
             }
         }
         
-        // Nome do arquivo de log baseado na data e tipo
-        $tipoArquivo = strtolower($tipo);
-        $arquivoLog = LOG_DIR . $tipoArquivo . '_' . date('Y-m-d') . '.log';
+        // Nome do arquivo de log baseado na data
+        $arquivoLog = LOG_DIR . 'login_' . date('Y-m-d') . '.log';
         
         // Obter IP do usuário
         $ip = obterIP();
@@ -128,42 +127,6 @@ function registrarLogin($usuario, $sucesso, $motivo = '', $detalhes = []) {
     }
     
     registrarLog('LOGIN', $mensagem, $dadosLog);
-}
-
-/**
- * Função simplificada para registrar erros
- * @param string $mensagem Mensagem de erro
- * @param array $dados Dados adicionais do erro
- * @param Exception|null $exception Exceção capturada (opcional)
- */
-function logError($mensagem, $dados = [], $exception = null) {
-    $dadosErro = $dados;
-    
-    // Se uma exceção foi fornecida, adicionar informações dela
-    if ($exception !== null) {
-        $dadosErro = array_merge($dadosErro, [
-            'exception_message' => $exception->getMessage(),
-            'exception_code' => $exception->getCode(),
-            'exception_file' => $exception->getFile(),
-            'exception_line' => $exception->getLine(),
-            'exception_trace' => $exception->getTraceAsString(),
-            'exception_class' => get_class($exception)
-        ]);
-    }
-    
-    // Adicionar informações do contexto da requisição
-    $dadosErro = array_merge($dadosErro, [
-        'request_uri' => $_SERVER['REQUEST_URI'] ?? 'N/A',
-        'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'N/A',
-        'post_data' => !empty($_POST) ? $_POST : null,
-        'get_data' => !empty($_GET) ? $_GET : null
-    ]);
-    
-    // Registrar usando a função principal
-    registrarLog('ERRO', $mensagem, $dadosErro);
-    
-    // Também registrar no error_log do PHP como fallback
-    error_log("[SISIPTU ERRO] " . $mensagem . " | " . json_encode($dadosErro, JSON_UNESCAPED_UNICODE));
 }
 ?>
 
