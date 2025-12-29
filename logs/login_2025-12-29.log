@@ -8,3 +8,5 @@ LINE 27:                 FROM baixa_manual bm
 LINE 12:                     c.data_vencimento,
                              ^
 HINT:  Talvez você queira fazer referência à coluna "c.datavencimento". | IP: ::1 | {"action":"pesquisar","erro":"SQLSTATE[42703]: Undefined column: 7 ERRO:  coluna c.data_vencimento não existe\nLINE 12:                     c.data_vencimento,\n                             ^\nHINT:  Talvez você queira fazer referência à coluna \"c.datavencimento\".","arquivo":"C:\\xampp\\htdocs\\SISIPTU\\php\\baixa_manual_api.php","linha":175}
+[2025-12-29 21:54:33] [ERRO] Erro no processamento de baixa manual: SQLSTATE[22P02]: Invalid text representation: 7 ERRO:  sintaxe de entrada é inválida para tipo integer: "SSSSS"
+CONTEXT:  parâmetro de portal sem nome $4 = '...' | IP: ::1 | {"action":"buscar-por-titulo","erro":"SQLSTATE[22P02]: Invalid text representation: 7 ERRO:  sintaxe de entrada é inválida para tipo integer: \"SSSSS\"\nCONTEXT:  parâmetro de portal sem nome $4 = '...'","arquivo":"C:\\xampp\\htdocs\\SISIPTU\\php\\baixa_manual_api.php","linha":239}
