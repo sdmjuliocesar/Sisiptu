@@ -42,7 +42,18 @@ document.addEventListener('DOMContentLoaded', function() {
             method: 'POST',
             body: formData
         })
-        .then(response => response.json())
+        .then(response => {
+            // Verificar se a resposta é JSON válido
+            const contentType = response.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                // Se não for JSON, tentar ler como texto para ver o erro
+                return response.text().then(text => {
+                    console.error('Resposta não é JSON:', text);
+                    throw new Error('Resposta do servidor não é JSON válido. Verifique o console para detalhes.');
+                });
+            }
+            return response.json();
+        })
         .then(data => {
             if (data.sucesso) {
                 mostrarMensagem(data.mensagem, 'sucesso');
@@ -64,7 +75,11 @@ document.addEventListener('DOMContentLoaded', function() {
         })
         .catch(error => {
             console.error('Erro:', error);
-            mostrarMensagem('Erro ao processar login. Tente novamente.', 'erro');
+            let mensagemErro = 'Erro ao processar login. Tente novamente.';
+            if (error.message) {
+                mensagemErro = error.message;
+            }
+            mostrarMensagem(mensagemErro, 'erro');
             btnLogin.disabled = false;
             btnLogin.textContent = 'Entrar';
         });

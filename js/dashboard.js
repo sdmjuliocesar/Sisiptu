@@ -476,12 +476,16 @@ function inicializarCadastroEmpreendimentos() {
     // Carregar bancos no dropdown
     carregarBancosSelectEmpreendimentos();
     
+    // Carregar empresas no dropdown
+    carregarEmpresasSelectEmpreendimentos();
+    
     carregarEmpreendimentos();
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
 
         const id = document.getElementById('emp-id').value;
+        const empresa_id = document.getElementById('emp-empresa').value || '';
         const nome = document.getElementById('emp-nome').value.trim();
         const banco_id = document.getElementById('emp-banco').value || '';
         const descricao = document.getElementById('emp-descricao').value.trim();
@@ -498,6 +502,7 @@ function inicializarCadastroEmpreendimentos() {
         }
 
         const formData = new FormData();
+        formData.append('empresa_id', empresa_id);
         formData.append('nome', nome);
         formData.append('banco_id', banco_id);
         formData.append('descricao', descricao);
@@ -542,6 +547,7 @@ function inicializarCadastroEmpreendimentos() {
             form.reset();
             document.getElementById('emp-ativo').checked = true;
             document.getElementById('emp-id').value = '';
+            document.getElementById('emp-empresa').value = '';
             mostrarMensagemEmp('', null);
         });
     }
@@ -634,6 +640,7 @@ function editarEmpreendimento(id) {
 
             const e = data.empreendimento;
             document.getElementById('emp-id').value = e.id;
+            document.getElementById('emp-empresa').value = e.empresa_id || '';
             document.getElementById('emp-nome').value = e.nome || '';
             document.getElementById('emp-banco').value = e.banco_id || '';
             document.getElementById('emp-descricao').value = e.descricao || '';
@@ -649,6 +656,59 @@ function editarEmpreendimento(id) {
         .catch(err => {
             console.error(err);
             mostrarMensagemEmp('Erro ao carregar empreendimento.', 'erro');
+        });
+}
+
+function carregarEmpresasSelectEmpreendimentos() {
+    const select = document.getElementById('emp-empresa');
+    if (!select) {
+        console.warn('Elemento emp-empresa não encontrado. Tentando novamente...');
+        // Tentar novamente após um pequeno delay
+        setTimeout(carregarEmpresasSelectEmpreendimentos, 100);
+        return;
+    }
+
+    // Limpar e adicionar opção padrão
+    select.innerHTML = '<option value="">Selecione a empresa...</option>';
+
+    // Buscar empresas usando a API de empresas
+    fetch('/SISIPTU/php/empresas_api.php?action=list')
+        .then(r => {
+            if (!r.ok) {
+                throw new Error(`HTTP error! status: ${r.status}`);
+            }
+            const contentType = r.headers.get('content-type');
+            if (!contentType || !contentType.includes('application/json')) {
+                return r.text().then(text => {
+                    console.error('Resposta não é JSON:', text);
+                    throw new Error('Resposta não é JSON');
+                });
+            }
+            return r.json();
+        })
+        .then(data => {
+            if (!data || !data.sucesso) {
+                console.warn('Erro ao carregar empresas:', data?.mensagem || 'Resposta inválida');
+                return;
+            }
+
+            // Filtrar apenas empresas ativas
+            const empresas = (data.empresas || []).filter(e => e.ativo !== false);
+            
+            if (empresas.length === 0) {
+                console.info('Nenhuma empresa cadastrada.');
+                return;
+            }
+            
+            empresas.forEach(empresa => {
+                const option = document.createElement('option');
+                option.value = empresa.id;
+                option.textContent = empresa.nome || `Empresa ${empresa.id}`;
+                select.appendChild(option);
+            });
+        })
+        .catch(err => {
+            console.error('Erro ao carregar empresas:', err);
         });
 }
 
@@ -1313,6 +1373,353 @@ function inicializarCadastroClientes() {
     });
 }
 
+// ---------- CRUD Empresas ----------
+
+function inicializarCadastroEmpresas() {
+    const form = document.getElementById('form-empresa');
+    const btnNovo = document.getElementById('btn-novo-empresa');
+    const btnBuscar = document.getElementById('btn-buscar-empresa');
+    const btnLimparBusca = document.getElementById('btn-limpar-busca-empresa');
+    const tabelaBody = document.querySelector('#tabela-empresas tbody');
+
+    if (!form || !tabelaBody) return;
+
+    // Máscara / formatação de CNPJ
+    const inputCnpj = document.getElementById('empresa-cnpj');
+    let timeoutVerificacaoCnpj = null;
+    let validandoCnpj = false;
+    window.empresaEditandoId = null;
+    
+    const hiddenId = document.getElementById('empresa-id');
+    if (hiddenId) {
+        window.empresaEditandoId = hiddenId.value || null;
+    }
+    
+    if (inputCnpj) {
+        inputCnpj.addEventListener('input', function () {
+            let v = this.value.replace(/[^0-9]/g, '');
+            // Limitar a 14 dígitos (CNPJ)
+            if (v.length > 14) v = v.slice(0, 14);
+
+            // Aplicar máscara CNPJ: 00.000.000/0000-00
+            if (v.length > 12) {
+                v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, '$1.$2.$3/$4-$5');
+            } else if (v.length > 8) {
+                v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
+            } else if (v.length > 5) {
+                v = v.replace(/(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
+            } else if (v.length > 2) {
+                v = v.replace(/(\d{2})(\d{0,3})/, '$1.$2');
+            }
+
+            this.value = v;
+            
+            if (timeoutVerificacaoCnpj) {
+                clearTimeout(timeoutVerificacaoCnpj);
+            }
+            
+            if (!validandoCnpj && v.replace(/[^0-9]/g, '').length === 14) {
+                timeoutVerificacaoCnpj = setTimeout(() => {
+                    validarCnpjEmpresa(v);
+                }, 500);
+            }
+        });
+    }
+    
+    carregarEmpresas();
+
+    form.addEventListener('submit', function (e) {
+        e.preventDefault();
+
+        const id = document.getElementById('empresa-id').value;
+        const cnpj = document.getElementById('empresa-cnpj').value.replace(/[^0-9]/g, '');
+        const razao_social = document.getElementById('empresa-razao-social').value.trim();
+        const nome_fantasia = document.getElementById('empresa-nome-fantasia').value.trim();
+        const cep = document.getElementById('empresa-cep').value.trim();
+        const endereco = document.getElementById('empresa-endereco').value.trim();
+        const bairro = document.getElementById('empresa-bairro').value.trim();
+        const cidade = document.getElementById('empresa-cidade').value.trim();
+        const uf = document.getElementById('empresa-uf').value.trim().toUpperCase();
+        const cod_municipio = document.getElementById('empresa-cod-municipio').value.trim();
+        const email = document.getElementById('empresa-email').value.trim();
+        const site = document.getElementById('empresa-site').value.trim();
+        const tel_comercial = document.getElementById('empresa-tel-comercial').value.trim();
+        const tel_celular1 = document.getElementById('empresa-tel-cel1').value.trim();
+        const tel_celular2 = document.getElementById('empresa-tel-cel2').value.trim();
+        const ativo = document.getElementById('empresa-ativo').checked ? '1' : '0';
+
+        if (!cnpj || cnpj.length !== 14) {
+            mostrarMensagemEmpresas('Preencha o CNPJ corretamente (14 dígitos).', 'erro');
+            return;
+        }
+
+        if (!razao_social) {
+            mostrarMensagemEmpresas('Preencha a Razão Social.', 'erro');
+            return;
+        }
+
+        const formData = new FormData();
+        formData.append('cnpj', cnpj);
+        formData.append('razao_social', razao_social);
+        formData.append('nome_fantasia', nome_fantasia);
+        formData.append('cep', cep);
+        formData.append('endereco', endereco);
+        formData.append('bairro', bairro);
+        formData.append('cidade', cidade);
+        formData.append('uf', uf);
+        formData.append('cod_municipio', cod_municipio);
+        formData.append('email', email);
+        formData.append('site', site);
+        formData.append('tel_comercial', tel_comercial);
+        formData.append('tel_celular1', tel_celular1);
+        formData.append('tel_celular2', tel_celular2);
+        formData.append('ativo', ativo);
+
+        let action = 'create';
+        if (id) {
+            action = 'update';
+            formData.append('id', id);
+            formData.append('empresa_id', id);
+        }
+        formData.append('action', action);
+
+        fetch('/SISIPTU/php/empresas_api.php', {
+            method: 'POST',
+            body: formData
+        })
+            .then(r => r.json())
+            .then(data => {
+                if (data.sucesso) {
+                    mostrarMensagemEmpresas(data.mensagem, 'sucesso');
+                    form.reset();
+                    document.getElementById('empresa-ativo').checked = true;
+                    document.getElementById('empresa-id').value = '';
+                    window.empresaEditandoId = null;
+                    carregarEmpresas();
+                } else {
+                    mostrarMensagemEmpresas(data.mensagem || 'Erro ao salvar empresa.', 'erro');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemEmpresas('Erro ao salvar empresa.', 'erro');
+            });
+    });
+
+    if (btnNovo) {
+        btnNovo.addEventListener('click', function () {
+            form.reset();
+            document.getElementById('empresa-ativo').checked = true;
+            document.getElementById('empresa-id').value = '';
+            window.empresaEditandoId = null;
+            mostrarMensagemEmpresas('', null);
+        });
+    }
+
+    if (btnBuscar) {
+        btnBuscar.addEventListener('click', function () {
+            const q = document.getElementById('empresas-busca').value.trim();
+            carregarEmpresas(q);
+        });
+    }
+
+    if (btnLimparBusca) {
+        btnLimparBusca.addEventListener('click', function () {
+            document.getElementById('empresas-busca').value = '';
+            carregarEmpresas();
+        });
+    }
+
+    tabelaBody.addEventListener('click', function (e) {
+        const btn = e.target.closest('button');
+        if (!btn) return;
+
+        const id = btn.getAttribute('data-id');
+        if (!id) return;
+
+        if (btn.classList.contains('btn-edit')) {
+            editarEmpresa(id);
+        } else if (btn.classList.contains('btn-delete')) {
+            excluirEmpresa(id);
+        }
+    });
+}
+
+function validarCnpjEmpresa(cnpj) {
+    const cnpjLimpo = cnpj.replace(/[^0-9]/g, '');
+    if (cnpjLimpo.length !== 14) return;
+
+    validandoCnpj = true;
+    const formData = new FormData();
+    formData.append('cnpj', cnpjLimpo);
+    if (window.empresaEditandoId) {
+        formData.append('empresa_id', window.empresaEditandoId);
+    }
+
+    fetch('/SISIPTU/php/empresas_api.php?action=verificar-cnpj', {
+        method: 'POST',
+        body: formData
+    })
+        .then(r => r.json())
+        .then(data => {
+            validandoCnpj = false;
+            if (!data.sucesso) {
+                mostrarMensagemEmpresas(data.mensagem, 'erro');
+            }
+        })
+        .catch(err => {
+            validandoCnpj = false;
+            console.error('Erro ao validar CNPJ:', err);
+        });
+}
+
+function carregarEmpresas(q) {
+    const tabelaBody = document.querySelector('#tabela-empresas tbody');
+    if (!tabelaBody) return;
+
+    tabelaBody.innerHTML = '<tr><td colspan="10">Carregando...</td></tr>';
+
+    let url = '/SISIPTU/php/empresas_api.php?action=list';
+    if (q) {
+        url += '&q=' + encodeURIComponent(q);
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso) {
+                tabelaBody.innerHTML = '<tr><td colspan="10">' + (data.mensagem || 'Erro ao carregar empresas.') + '</td></tr>';
+                return;
+            }
+
+            const empresas = data.empresas || [];
+            if (empresas.length === 0) {
+                tabelaBody.innerHTML = '<tr><td colspan="10">Nenhuma empresa cadastrada.</td></tr>';
+                return;
+            }
+
+            tabelaBody.innerHTML = empresas.map(e => {
+                const cnpjFormatado = e.cpf_cnpj ? e.cpf_cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
+                const telefone = e.tel_comercial || e.tel_celular1 || 'N/A';
+                return `
+                    <tr>
+                        <td>${e.id}</td>
+                        <td>${cnpjFormatado}</td>
+                        <td>${e.nome || ''}</td>
+                        <td>${e.nome || ''}</td>
+                        <td>${e.cidade || ''}</td>
+                        <td>${e.uf || ''}</td>
+                        <td>${e.email || ''}</td>
+                        <td>${telefone}</td>
+                        <td>${e.ativo ? 'Sim' : 'Não'}</td>
+                        <td>
+                            <div class="acoes">
+                                <button type="button" class="btn-small btn-edit" data-id="${e.id}">Editar</button>
+                                <button type="button" class="btn-small btn-delete" data-id="${e.id}">Excluir</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+        })
+        .catch(err => {
+            console.error(err);
+            tabelaBody.innerHTML = '<tr><td colspan="10">Erro ao carregar empresas.</td></tr>';
+        });
+}
+
+function editarEmpresa(id) {
+    fetch('/SISIPTU/php/empresas_api.php?action=get&id=' + encodeURIComponent(id))
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso || !data.empresa) {
+                mostrarMensagemEmpresas(data.mensagem || 'Erro ao carregar empresa.', 'erro');
+                return;
+            }
+
+            const e = data.empresa;
+            window.empresaEditandoId = e.id;
+            document.getElementById('empresa-id').value = e.id;
+            
+            // Formatar CNPJ
+            const cnpj = e.cpf_cnpj ? e.cpf_cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
+            document.getElementById('empresa-cnpj').value = cnpj;
+            
+            // Para empresas, o campo 'nome' pode ser nome_fantasia ou razao_social
+            // Vamos usar razao_social como nome principal
+            document.getElementById('empresa-razao-social').value = e.nome || '';
+            document.getElementById('empresa-nome-fantasia').value = e.nome || '';
+            document.getElementById('empresa-cep').value = e.cep || '';
+            document.getElementById('empresa-endereco').value = e.endereco || '';
+            document.getElementById('empresa-bairro').value = e.bairro || '';
+            document.getElementById('empresa-cidade').value = e.cidade || '';
+            document.getElementById('empresa-uf').value = e.uf || '';
+            document.getElementById('empresa-cod-municipio').value = e.cod_municipio || '';
+            document.getElementById('empresa-email').value = e.email || '';
+            document.getElementById('empresa-site').value = e.site || '';
+            document.getElementById('empresa-tel-comercial').value = e.tel_comercial || '';
+            document.getElementById('empresa-tel-cel1').value = e.tel_celular1 || '';
+            document.getElementById('empresa-tel-cel2').value = e.tel_celular2 || '';
+            document.getElementById('empresa-ativo').checked = !!e.ativo;
+
+            mostrarMensagemEmpresas('Empresa carregada para edição. Altere os dados e clique em Salvar.', 'sucesso');
+        })
+        .catch(err => {
+            console.error(err);
+            mostrarMensagemEmpresas('Erro ao carregar empresa.', 'erro');
+        });
+}
+
+function excluirEmpresa(id) {
+    if (!confirm('Tem certeza que deseja excluir esta empresa?')) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('id', id);
+    formData.append('action', 'delete');
+
+    fetch('/SISIPTU/php/empresas_api.php', {
+        method: 'POST',
+        body: formData
+    })
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso) {
+                mostrarMensagemEmpresas(data.mensagem, 'sucesso');
+                carregarEmpresas();
+            } else {
+                mostrarMensagemEmpresas(data.mensagem || 'Erro ao excluir empresa.', 'erro');
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            mostrarMensagemEmpresas('Erro ao excluir empresa.', 'erro');
+        });
+}
+
+function mostrarMensagemEmpresas(texto, tipo) {
+    const msg = document.getElementById('empresas-mensagem');
+    if (!msg) return;
+    
+    if (!texto || !tipo) {
+        msg.style.display = 'none';
+        msg.textContent = '';
+        msg.className = 'mensagem';
+        return;
+    }
+    
+    msg.textContent = texto;
+    msg.className = 'mensagem ' + tipo;
+    msg.style.display = 'block';
+    
+    if (tipo === 'sucesso') {
+        setTimeout(() => {
+            msg.style.display = 'none';
+        }, 3000);
+    }
+}
+
 function mostrarMensagemCli(texto, tipo) {
     const msg = document.getElementById('cli-mensagem');
     if (!msg) return;
@@ -1478,17 +1885,31 @@ function mostrarMensagemBanco(texto, tipo) {
     if (!texto) {
         el.innerHTML = '';
         el.className = 'mensagem';
+        el.style.display = 'none';
         return;
     }
-    el.className = 'mensagem ' + (tipo === 'sucesso' ? 'mensagem-sucesso' : 'mensagem-erro');
+    const tipoClass = tipo === 'sucesso' ? 'sucesso' : (tipo === 'info' ? 'info' : 'erro');
+    el.className = 'mensagem ' + tipoClass;
+    el.style.display = 'block';
     el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <span>${texto}</span>
-            <button type="button" class="btn-message-ok" onclick="this.parentNode.parentNode.innerHTML='';">
+            <button type="button" class="btn-message-ok" onclick="this.parentNode.parentNode.innerHTML=''; this.parentNode.parentNode.style.display='none';">
                 OK
             </button>
         </div>
     `;
+    
+    // Auto-ocultar após 8 segundos se for info ou sucesso
+    if (tipo === 'info' || tipo === 'sucesso') {
+        setTimeout(() => {
+            if (el) {
+                el.innerHTML = '';
+                el.className = 'mensagem';
+                el.style.display = 'none';
+            }
+        }, 8000);
+    }
 }
 
 function inicializarCadastroBancos() {
@@ -1632,7 +2053,7 @@ function inicializarCadastroBancos() {
             return caminhoDiretorio;
         }
         
-        // Usar webkitRelativePath para extrair o diretório base selecionado
+        // Tentar usar webkitRelativePath para extrair o diretório base selecionado
         if (primeiroArquivo.webkitRelativePath) {
             // Quando um diretório é selecionado, todos os arquivos têm webkitRelativePath
             // começando com o nome do diretório selecionado
@@ -1644,7 +2065,6 @@ function inicializarCadastroBancos() {
             if (caminhos.length === 0) return '';
             
             // Encontrar o prefixo comum até a primeira barra (diretório base selecionado)
-            // Todos os arquivos devem começar com o mesmo nome de diretório
             const primeiroCaminho = caminhos[0];
             const primeiraBarra = primeiroCaminho.indexOf('/');
             
@@ -1659,6 +2079,8 @@ function inicializarCadastroBancos() {
                 
                 if (todosMesmoDiretorio) {
                     // Retornar apenas o nome do diretório selecionado
+                    // Nota: Em navegadores web, não podemos obter o caminho completo por segurança
+                    // O usuário precisará digitar o caminho completo manualmente ou usar um caminho relativo
                     return nomeDiretorio;
                 } else {
                     // Se não, encontrar o prefixo comum mais longo
@@ -1684,8 +2106,6 @@ function inicializarCadastroBancos() {
                 }
             } else {
                 // Não há barra no caminho, então o arquivo está diretamente no diretório selecionado
-                // Neste caso, não podemos determinar o nome do diretório
-                // Retornar o nome do arquivo como referência
                 return primeiroCaminho;
             }
         }
@@ -1694,44 +2114,186 @@ function inicializarCadastroBancos() {
         return '';
     }
 
-    // Seleção de diretório para Remessa
-    const btnProcurarRemessa = document.getElementById('btn-procurar-remessa');
-    const fileRemessa = document.getElementById('file-remessa');
+    // Configuração do campo Remessa
     const inputRemessa = document.getElementById('banco-remessa');
+    const btnBuscarRemessa = document.getElementById('btn-buscar-remessa');
+    const listaDiretoriosRemessa = document.getElementById('banco-lista-diretorios-remessa');
     
-    if (btnProcurarRemessa && fileRemessa && inputRemessa) {
-        btnProcurarRemessa.addEventListener('click', function() {
-            fileRemessa.value = ''; // Limpar seleção anterior
-            fileRemessa.click();
+    if (inputRemessa && listaDiretoriosRemessa) {
+        // Carregar lista de diretórios ao inicializar
+        carregarListaDiretoriosBanco('remessa');
+        
+        // Event listener para mostrar/ocultar lista ao focar no input
+        inputRemessa.addEventListener('focus', function() {
+            if (listaDiretoriosRemessa.innerHTML.trim() !== '') {
+                listaDiretoriosRemessa.style.display = 'block';
+            }
         });
         
-        fileRemessa.addEventListener('change', function(e) {
-            const files = e.target.files;
-            if (files.length > 0) {
-                const caminho = extrairCaminhoDiretorio(files);
-                inputRemessa.value = caminho;
+        inputRemessa.addEventListener('input', function() {
+            carregarListaDiretoriosBanco('remessa');
+        });
+        
+        inputRemessa.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                listaDiretoriosRemessa.style.display = 'none';
+            }
+        });
+        
+        // Fechar lista ao clicar fora
+        document.addEventListener('click', function(e) {
+            if (inputRemessa && listaDiretoriosRemessa && 
+                !inputRemessa.contains(e.target) && 
+                !listaDiretoriosRemessa.contains(e.target) &&
+                btnBuscarRemessa && !btnBuscarRemessa.contains(e.target)) {
+                listaDiretoriosRemessa.style.display = 'none';
             }
         });
     }
-
-    // Seleção de diretório para Retorno
-    const btnProcurarRetorno = document.getElementById('btn-procurar-retorno');
-    const fileRetorno = document.getElementById('file-retorno');
-    const inputRetorno = document.getElementById('banco-retorno');
     
-    if (btnProcurarRetorno && fileRetorno && inputRetorno) {
-        btnProcurarRetorno.addEventListener('click', function() {
-            fileRetorno.value = ''; // Limpar seleção anterior
-            fileRetorno.click();
-        });
-        
-        fileRetorno.addEventListener('change', function(e) {
-            const files = e.target.files;
-            if (files.length > 0) {
-                const caminho = extrairCaminhoDiretorio(files);
-                inputRetorno.value = caminho;
+    // Função para selecionar diretório Remessa
+    window.selecionarDiretorioRemessa = function(diretorio) {
+        if (inputRemessa) {
+            inputRemessa.value = diretorio;
+        }
+        if (listaDiretoriosRemessa) {
+            listaDiretoriosRemessa.style.display = 'none';
+        }
+    };
+    
+    // Botão Buscar Remessa
+    if (btnBuscarRemessa) {
+        btnBuscarRemessa.addEventListener('click', function() {
+            carregarListaDiretoriosBanco('remessa');
+            if (inputRemessa && listaDiretoriosRemessa) {
+                if (listaDiretoriosRemessa.innerHTML.trim() !== '') {
+                    listaDiretoriosRemessa.style.display = 'block';
+                }
             }
         });
+    }
+    
+    // Configuração do campo Retorno
+    const inputRetorno = document.getElementById('banco-retorno');
+    const btnBuscarRetorno = document.getElementById('btn-buscar-retorno');
+    const listaDiretoriosRetorno = document.getElementById('banco-lista-diretorios-retorno');
+    
+    if (inputRetorno && listaDiretoriosRetorno) {
+        // Carregar lista de diretórios ao inicializar
+        carregarListaDiretoriosBanco('retorno');
+        
+        // Event listener para mostrar/ocultar lista ao focar no input
+        inputRetorno.addEventListener('focus', function() {
+            if (listaDiretoriosRetorno.innerHTML.trim() !== '') {
+                listaDiretoriosRetorno.style.display = 'block';
+            }
+        });
+        
+        inputRetorno.addEventListener('input', function() {
+            carregarListaDiretoriosBanco('retorno');
+        });
+        
+        inputRetorno.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                listaDiretoriosRetorno.style.display = 'none';
+            }
+        });
+        
+        // Fechar lista ao clicar fora
+        document.addEventListener('click', function(e) {
+            if (inputRetorno && listaDiretoriosRetorno && 
+                !inputRetorno.contains(e.target) && 
+                !listaDiretoriosRetorno.contains(e.target) &&
+                btnBuscarRetorno && !btnBuscarRetorno.contains(e.target)) {
+                listaDiretoriosRetorno.style.display = 'none';
+            }
+        });
+    }
+    
+    // Função para selecionar diretório Retorno
+    window.selecionarDiretorioRetorno = function(diretorio) {
+        if (inputRetorno) {
+            inputRetorno.value = diretorio;
+        }
+        if (listaDiretoriosRetorno) {
+            listaDiretoriosRetorno.style.display = 'none';
+        }
+    };
+    
+    // Botão Buscar Retorno
+    if (btnBuscarRetorno) {
+        btnBuscarRetorno.addEventListener('click', function() {
+            carregarListaDiretoriosBanco('retorno');
+            if (inputRetorno && listaDiretoriosRetorno) {
+                if (listaDiretoriosRetorno.innerHTML.trim() !== '') {
+                    listaDiretoriosRetorno.style.display = 'block';
+                }
+            }
+        });
+    }
+    
+    // Função para carregar lista de diretórios
+    function carregarListaDiretoriosBanco(tipo) {
+        const input = tipo === 'remessa' ? inputRemessa : inputRetorno;
+        const lista = tipo === 'remessa' ? listaDiretoriosRemessa : listaDiretoriosRetorno;
+        
+        if (!lista) return;
+        
+        fetch('/SISIPTU/php/importar_clientes_api.php?action=listar-diretorios')
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso) {
+                    lista.innerHTML = '';
+                    lista.style.display = 'none';
+                    return;
+                }
+                
+                const diretorios = data.diretorios || [];
+                if (diretorios.length === 0) {
+                    lista.innerHTML = '';
+                    lista.style.display = 'none';
+                    return;
+                }
+                
+                // Filtrar diretórios baseado no que o usuário digitou
+                const filtro = input ? input.value.trim().toLowerCase() : '';
+                const diretoriosFiltrados = diretorios.filter(dir => {
+                    if (!filtro) return true;
+                    return dir.toLowerCase().includes(filtro);
+                });
+                
+                if (diretoriosFiltrados.length === 0) {
+                    lista.innerHTML = '';
+                    lista.style.display = 'none';
+                    return;
+                }
+                
+                const funcaoSelecionar = tipo === 'remessa' ? 'selecionarDiretorioRemessa' : 'selecionarDiretorioRetorno';
+                
+                lista.innerHTML = diretoriosFiltrados.map(dir => {
+                    return `
+                        <div class="ic-item-diretorio" style="padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; transition: background-color 0.2s;" 
+                             onmouseover="this.style.backgroundColor='#e3f2fd'; this.style.color='#1976d2';" 
+                             onmouseout="this.style.backgroundColor=''; this.style.color='';"
+                             onclick="${funcaoSelecionar}('${dir.replace(/'/g, "\\'")}')">
+                            <span style="font-size: 16px;">📁</span>
+                            <span style="flex: 1;">${dir}/</span>
+                        </div>
+                    `;
+                }).join('');
+                
+                // Mostrar lista se o input estiver focado
+                if (input && document.activeElement === input) {
+                    lista.style.display = 'block';
+                }
+            })
+            .catch(err => {
+                console.error('Erro ao carregar diretórios:', err);
+                lista.innerHTML = '';
+                lista.style.display = 'none';
+            });
     }
 
     carregarBancos();
@@ -4247,6 +4809,146 @@ function carregarPagina(page) {
             setTimeout(inicializarCadastroClientes, 0);
             break;
             
+        case 'cadastro-empresas':
+            titulo = 'Cadastro - Empresas';
+            conteudo = `
+                <div class="page-content" id="empresas-page">
+                    <h3>🏭 Cadastro de Empresas</h3>
+                    <p>Cadastre, altere, exclua e pesquise empresas.</p>
+                    
+                    <div class="form-section">
+                        <form id="form-empresa">
+                            <input type="hidden" id="empresa-id" name="id">
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="empresa-cnpj">CNPJ</label>
+                                    <input type="text" id="empresa-cnpj" name="cnpj" placeholder="CNPJ" maxlength="18" required>
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-razao-social">Razão Social</label>
+                                    <input type="text" id="empresa-razao-social" name="razao_social" placeholder="Razão Social" required>
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-nome-fantasia">Nome Fantasia</label>
+                                    <input type="text" id="empresa-nome-fantasia" name="nome_fantasia" placeholder="Nome Fantasia">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="empresa-cep">CEP</label>
+                                    <input type="text" id="empresa-cep" name="cep" placeholder="CEP">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-endereco">Endereço</label>
+                                    <input type="text" id="empresa-endereco" name="endereco" placeholder="Endereço">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-bairro">Bairro</label>
+                                    <input type="text" id="empresa-bairro" name="bairro" placeholder="Bairro">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="empresa-cidade">Cidade</label>
+                                    <input type="text" id="empresa-cidade" name="cidade" placeholder="Cidade">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-uf">UF</label>
+                                    <input type="text" id="empresa-uf" name="uf" placeholder="UF" maxlength="2" style="text-transform: uppercase;">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-cod-municipio">Cod. Município</label>
+                                    <input type="text" id="empresa-cod-municipio" name="cod_municipio" placeholder="Cod. Município">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="empresa-email">E-mail</label>
+                                    <input type="email" id="empresa-email" name="email" placeholder="E-mail">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-site">Site</label>
+                                    <input type="text" id="empresa-site" name="site" placeholder="Site">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="empresa-tel-comercial">Telefone Comercial</label>
+                                    <input type="text" id="empresa-tel-comercial" name="tel_comercial" placeholder="Telefone Comercial">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-tel-cel1">Telefone Celular 1</label>
+                                    <input type="text" id="empresa-tel-cel1" name="tel_celular1" placeholder="Telefone Celular 1">
+                                </div>
+                                <div class="form-group-inline">
+                                    <label for="empresa-tel-cel2">Telefone Celular 2</label>
+                                    <input type="text" id="empresa-tel-cel2" name="tel_celular2" placeholder="Telefone Celular 2">
+                                </div>
+                            </div>
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline checkbox-group">
+                                    <label>
+                                        <input type="checkbox" id="empresa-ativo" name="ativo" value="1" checked>
+                                        Ativo
+                                    </label>
+                                </div>
+                            </div>
+                            
+                            <div class="form-actions">
+                                <button type="submit" class="btn-primary" id="btn-salvar-empresa">Salvar</button>
+                                <button type="button" class="btn-secondary" id="btn-novo-empresa">Novo</button>
+                            </div>
+                            
+                            <div id="empresas-mensagem" class="mensagem" style="margin-top: 10px; display: none;"></div>
+                        </form>
+                    </div>
+                    
+                    <div class="table-section">
+                        <h4>Pesquisa de Empresas</h4>
+                        <div class="form-row" style="margin-bottom: 10px;">
+                            <div class="form-group-inline">
+                                <label for="empresas-busca">Pesquisar por Razão Social, Nome Fantasia ou CNPJ</label>
+                                <input type="text" id="empresas-busca" placeholder="Digite parte do nome ou CNPJ">
+                            </div>
+                            <div class="form-actions">
+                                <button type="button" class="btn-primary" id="btn-buscar-empresa">Pesquisar</button>
+                                <button type="button" class="btn-secondary" id="btn-limpar-busca-empresa">Limpar</button>
+                            </div>
+                        </div>
+                        
+                        <div class="table-wrapper">
+                            <table class="table" id="tabela-empresas">
+                                <thead>
+                                    <tr>
+                                        <th>ID</th>
+                                        <th>CNPJ</th>
+                                        <th>Razão Social</th>
+                                        <th>Nome Fantasia</th>
+                                        <th>Cidade</th>
+                                        <th>UF</th>
+                                        <th>E-mail</th>
+                                        <th>Telefone</th>
+                                        <th>Ativo</th>
+                                        <th>Ações</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Linhas serão carregadas via JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            `;
+            setTimeout(inicializarCadastroEmpresas, 0);
+            break;
+            
         case 'cadastro-empreendimentos':
             titulo = 'Cadastro - Empreendimentos';
             conteudo = `
@@ -4257,6 +4959,15 @@ function carregarPagina(page) {
                     <div class="form-section">
                         <form id="form-empreendimento">
                             <input type="hidden" id="emp-id" name="id">
+                            
+                            <div class="form-row">
+                                <div class="form-group-inline">
+                                    <label for="emp-empresa"><strong>Empresa</strong></label>
+                                    <select id="emp-empresa" name="empresa_id" title="Empresa">
+                                        <option value="">Selecione a empresa...</option>
+                                    </select>
+                                </div>
+                            </div>
                             
                             <div class="form-row">
                                 <div class="form-group-inline">
@@ -4611,19 +5322,31 @@ function carregarPagina(page) {
                             
                             <div class="form-row">
                                 <div class="form-group-inline">
-                                    <label for="banco-remessa">Cam.Remessa (Diretório)</label>
-                                    <div style="display: flex; gap: 5px;">
-                                        <input type="text" id="banco-remessa" name="caminho_remessa" placeholder="Cam.Remessa (Diretório)" style="flex: 1;">
-                                        <button type="button" id="btn-procurar-remessa" class="btn-browse" title="Procurar diretório">📁</button>
-                                        <input type="file" id="file-remessa" webkitdirectory directory multiple style="display: none;">
+                                    <label for="banco-remessa" style="color: #2d8659; font-weight: bold; margin-bottom: 8px; display: block;">Cam.Remessa (Diretório)</label>
+                                    <div style="position: relative;">
+                                        <div style="display: flex; gap: 5px; align-items: center;">
+                                            <div style="position: relative; flex: 1;">
+                                                <input type="text" id="banco-remessa" name="caminho_remessa" placeholder="Caminho do diretório (ex: uploads/remessas)" style="width: 100%; padding: 8px 35px 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
+                                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #999; font-size: 14px;">🔄</span>
+                                            </div>
+                                            <button type="button" id="btn-buscar-remessa" class="btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Buscar</button>
+                                        </div>
+                                        <div id="banco-lista-diretorios-remessa" style="display: none; position: absolute; top: 100%; left: 0; right: 70px; margin-top: 2px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto; z-index: 1000;">
+                                        </div>
                                     </div>
                                 </div>
                                 <div class="form-group-inline">
-                                    <label for="banco-retorno">Cam.Retorno (Diretório)</label>
-                                    <div style="display: flex; gap: 5px;">
-                                        <input type="text" id="banco-retorno" name="caminho_retorno" placeholder="Cam.Retorno (Diretório)" style="flex: 1;">
-                                        <button type="button" id="btn-procurar-retorno" class="btn-browse" title="Procurar diretório">📁</button>
-                                        <input type="file" id="file-retorno" webkitdirectory directory multiple style="display: none;">
+                                    <label for="banco-retorno" style="color: #2d8659; font-weight: bold; margin-bottom: 8px; display: block;">Cam.Retorno (Diretório)</label>
+                                    <div style="position: relative;">
+                                        <div style="display: flex; gap: 5px; align-items: center;">
+                                            <div style="position: relative; flex: 1;">
+                                                <input type="text" id="banco-retorno" name="caminho_retorno" placeholder="Caminho do diretório (ex: uploads/retornos)" style="width: 100%; padding: 8px 35px 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
+                                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #999; font-size: 14px;">🔄</span>
+                                            </div>
+                                            <button type="button" id="btn-buscar-retorno" class="btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Buscar</button>
+                                        </div>
+                                        <div id="banco-lista-diretorios-retorno" style="display: none; position: absolute; top: 100%; left: 0; right: 70px; margin-top: 2px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto; z-index: 1000;">
+                                        </div>
                                     </div>
                                 </div>
                             </div>
@@ -5041,8 +5764,8 @@ function carregarPagina(page) {
                                 <thead>
                                     <tr>
                                         <th>Empreendimento</th>
-                                        <th>Lote\Quadra\Área</th>
                                         <th>Módulo</th>
+                                        <th>Lote\Quadra\Área</th>
                                         <th>Contrato</th>
                                         <th>Inscrição</th>
                                         <th>Metragem</th>
@@ -5053,7 +5776,7 @@ function carregarPagina(page) {
                                         <th>Desconto à Vista</th>
                                         <th>Parcelamento</th>
                                         <th>Valor Anual</th>
-                                        <th>CPF/CNPJ</th>
+                                        <th>Cliente</th>
                                         <th>Situação</th>
                                         <th>Data Criação</th>
                                         <th>Data Atualização</th>
@@ -5630,6 +6353,29 @@ function carregarPagina(page) {
                             </div>
                         </div>
                         
+                        <!-- Informações do Banco -->
+                        <div id="ca-info-banco" style="margin-bottom: 20px; padding: 15px; background: #f0f7f4; border-left: 4px solid #2d8659; border-radius: 4px; display: none;">
+                            <h4 style="margin: 0 0 10px 0; color: #2d8659; font-size: 16px;">🏦 Informações do Banco</h4>
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333; font-size: 13px;">Nome do Banco:</label>
+                                    <div id="ca-banco-nome" style="padding: 8px; background: white; border-radius: 4px; color: #555; font-size: 14px;">-</div>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333; font-size: 13px;">Agência:</label>
+                                    <div id="ca-banco-agencia" style="padding: 8px; background: white; border-radius: 4px; color: #555; font-size: 14px;">-</div>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333; font-size: 13px;">Conta Corrente:</label>
+                                    <div id="ca-banco-conta" style="padding: 8px; background: white; border-radius: 4px; color: #555; font-size: 14px;">-</div>
+                                </div>
+                                <div>
+                                    <label style="display: block; margin-bottom: 5px; font-weight: 600; color: #333; font-size: 13px;">Caminho da Remessa:</label>
+                                    <div id="ca-caminho-remessa" style="padding: 8px; background: white; border-radius: 4px; color: #555; font-size: 14px; word-break: break-all;">-</div>
+                                </div>
+                            </div>
+                        </div>
+                        
                         <!-- Seção Periodo de Referencia -->
                         <div style="margin-bottom: 20px;">
                             <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Periodo de Referencia</label>
@@ -5667,12 +6413,131 @@ function carregarPagina(page) {
                             </label>
                         </div>
                         
+                        <!-- Botão Pesquisar -->
+                        <div style="margin-top: 20px;">
+                            <button type="button" id="btn-pesquisar-titulos" class="btn-primary" style="padding: 10px 20px;">
+                                🔍 Pesquisar Títulos
+                            </button>
+                        </div>
+                        
+                        <!-- Grid de Títulos -->
+                        <div style="margin-top: 30px;">
+                            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                                <h4 style="margin: 0; color: #2d8659;">Títulos que serão enviados</h4>
+                                <div style="display: flex; gap: 10px;">
+                                    <button type="button" id="btn-selecionar-todos" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+                                        Selecionar Todos
+                                    </button>
+                                    <button type="button" id="btn-deselecionar-todos" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+                                        Deselecionar Todos
+                                    </button>
+                                </div>
+                            </div>
+                            <div class="table-wrapper" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table" id="tabela-cobranca-automatica">
+                                    <thead>
+                                        <tr>
+                                            <th style="width: 40px;">
+                                                <input type="checkbox" id="check-todos-titulos" style="cursor: pointer;">
+                                            </th>
+                                            <th>Título</th>
+                                            <th>Cliente</th>
+                                            <th>Parcela</th>
+                                            <th>Vencimento</th>
+                                            <th>Valor</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabela-cobranca-automatica-body">
+                                        <tr>
+                                            <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
+                                                Selecione o empreendimento e o período de referência, depois clique em "Pesquisar Títulos".
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                            <div style="margin-top: 15px; display: flex; justify-content: flex-end;">
+                                <button type="button" id="btn-processar-cobranca" class="btn-primary" style="padding: 10px 30px; font-size: 16px;" disabled>
+                                    ⚙️ Processar
+                                </button>
+                            </div>
+                        </div>
+                        
                         <!-- Mensagens -->
                         <div id="ca-mensagem" class="mensagem" style="margin-top: 15px; display: none;"></div>
                     </div>
                 </div>
             `;
             setTimeout(inicializarCobrancaAutomatica, 0);
+            break;
+            
+        case 'cobranca-retorno-bancario':
+            titulo = 'Cobrança - Retorno Bancário';
+            conteudo = `
+                <div class="page-content" id="cobranca-retorno-bancario-page" style="background: #f5f5f5; padding: 20px;">
+                    <div style="background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
+                        <h3 style="margin-bottom: 20px; color: #2d8659;">🏦 Retorno Bancário</h3>
+                        
+                        <!-- Seção Upload de Arquivo -->
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Arquivo de Retorno</label>
+                            <div style="display: flex; gap: 10px; align-items: flex-end;">
+                                <div style="flex: 1;">
+                                    <input type="file" id="rb-arquivo" name="arquivo" accept=".ret,.txt,.RET,.TXT" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+                                    <small style="color: #666; margin-top: 5px; display: block;">Formatos aceitos: .ret, .txt</small>
+                                </div>
+                                <button type="button" id="btn-processar-retorno" class="btn-primary" style="padding: 10px 20px; white-space: nowrap;">
+                                    📤 Processar Arquivo
+                                </button>
+                            </div>
+                        </div>
+                        
+                        <!-- Seção Banco -->
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Banco</label>
+                            <select id="rb-banco" name="banco_id" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+                                <option value="">Selecione o banco...</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Seção Data de Movimento -->
+                        <div style="margin-bottom: 20px;">
+                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Data de Movimento</label>
+                            <input type="date" id="rb-data-movimento" name="data_movimento" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
+                        </div>
+                        
+                        <!-- Tabela de Resultados -->
+                        <div style="margin-top: 30px;">
+                            <h4 style="margin-bottom: 15px; color: #2d8659;">Resultado do Processamento</h4>
+                            <div class="table-wrapper" style="max-height: 500px; overflow-y: auto;">
+                                <table class="table" id="tabela-retorno-bancario">
+                                    <thead>
+                                        <tr>
+                                            <th>Linha</th>
+                                            <th>Tipo</th>
+                                            <th>Nosso Número</th>
+                                            <th>Valor</th>
+                                            <th>Data Pagamento</th>
+                                            <th>Status</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="tabela-retorno-bancario-body">
+                                        <tr>
+                                            <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
+                                                Nenhum arquivo processado ainda.
+                                            </td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                        
+                        <!-- Mensagens -->
+                        <div id="rb-mensagem" class="mensagem" style="margin-top: 15px; display: none;"></div>
+                    </div>
+                </div>
+            `;
+            setTimeout(inicializarRetornoBancario, 0);
             break;
             
         case 'relatorios':
@@ -6443,8 +7308,8 @@ function buscarContratos(params) {
                 return `
                     <tr>
                         <td>${c.empreendimento_nome || ''}</td>
+                        <td>${c.modulo_nome || c.modulo || ''}</td>
                         <td>${c.area || ''}</td>
-                        <td>${c.modulo || ''}</td>
                         <td>${c.contrato || ''}</td>
                         <td>${c.inscricao || ''}</td>
                         <td>${metragem}</td>
@@ -6455,7 +7320,7 @@ function buscarContratos(params) {
                         <td>${descontoAVista}</td>
                         <td>${c.parcelamento || ''}</td>
                         <td>${valorAnual}</td>
-                        <td>${c.cpf_cnpj || ''}</td>
+                        <td>${c.cliente_nome || ''}</td>
                         <td>${c.situacao || ''}</td>
                         <td>${dataCriacao}</td>
                         <td>${dataAtualizacao}</td>
@@ -8856,11 +9721,540 @@ function inicializarBaixaManual() {
 }
 
 // ========== COBRANÇA AUTOMÁTICA ==========
+// Variável global para armazenar os títulos carregados
+let titulosCobrancaAutomatica = [];
+
 function inicializarCobrancaAutomatica() {
     carregarEmpreendimentosSelectCobrancaAutomatica();
     
-    // Event listener para empreendimento (não precisa mais carregar contratos em dropdown)
-    // Os campos de Título e Contrato agora são inputs de texto digitáveis
+    // Event listener para botão pesquisar
+    const btnPesquisar = document.getElementById('btn-pesquisar-titulos');
+    if (btnPesquisar) {
+        btnPesquisar.addEventListener('click', function() {
+            pesquisarTitulosCobrancaAutomatica();
+        });
+    }
+    
+    // Event listener para botão processar
+    const btnProcessar = document.getElementById('btn-processar-cobranca');
+    if (btnProcessar) {
+        btnProcessar.addEventListener('click', function() {
+            processarCobrancaAutomatica();
+        });
+    }
+    
+    // Event listeners para seleção
+    const checkTodos = document.getElementById('check-todos-titulos');
+    if (checkTodos) {
+        checkTodos.addEventListener('change', function() {
+            const checked = this.checked;
+            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                cb.checked = checked;
+            });
+            atualizarBotaoProcessar();
+        });
+    }
+    
+    const btnSelecionarTodos = document.getElementById('btn-selecionar-todos');
+    if (btnSelecionarTodos) {
+        btnSelecionarTodos.addEventListener('click', function() {
+            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                cb.checked = true;
+            });
+            if (checkTodos) checkTodos.checked = true;
+            atualizarBotaoProcessar();
+        });
+    }
+    
+    const btnDeselecionarTodos = document.getElementById('btn-deselecionar-todos');
+    if (btnDeselecionarTodos) {
+        btnDeselecionarTodos.addEventListener('click', function() {
+            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                cb.checked = false;
+            });
+            if (checkTodos) checkTodos.checked = false;
+            atualizarBotaoProcessar();
+        });
+    }
+    
+    // Event listeners para atualizar grid quando filtros mudarem
+    const selectEmpreendimento = document.getElementById('ca-empreendimento');
+    const inputPeriodoInicio = document.getElementById('ca-periodo-inicio');
+    const inputPeriodoFim = document.getElementById('ca-periodo-fim');
+    
+    if (selectEmpreendimento) {
+        selectEmpreendimento.addEventListener('change', function() {
+            const empreendimentoId = this.value;
+            if (empreendimentoId) {
+                carregarInfoBancoEmpreendimento(empreendimentoId);
+            } else {
+                ocultarInfoBanco();
+            }
+            // Limpar grid quando mudar empreendimento
+            limparGridCobrancaAutomatica();
+        });
+    }
+    
+    if (inputPeriodoInicio) {
+        inputPeriodoInicio.addEventListener('change', function() {
+            limparGridCobrancaAutomatica();
+        });
+    }
+    
+    if (inputPeriodoFim) {
+        inputPeriodoFim.addEventListener('change', function() {
+            limparGridCobrancaAutomatica();
+        });
+    }
+}
+
+function atualizarBotaoProcessar() {
+    const btnProcessar = document.getElementById('btn-processar-cobranca');
+    if (!btnProcessar) return;
+    
+    const selecionados = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]:checked');
+    btnProcessar.disabled = selecionados.length === 0;
+}
+
+function carregarInfoBancoEmpreendimento(empreendimentoId) {
+    if (!empreendimentoId) {
+        ocultarInfoBanco();
+        return;
+    }
+    
+    // Buscar informações do empreendimento
+    fetch(`/SISIPTU/php/empreendimentos_api.php?action=get&id=${empreendimentoId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso && data.empreendimento) {
+                const bancoId = data.empreendimento.banco_id;
+                
+                if (bancoId) {
+                    // Buscar informações do banco
+                    fetch(`/SISIPTU/php/bancos_api.php?action=get&id=${bancoId}`)
+                        .then(r => r.json())
+                        .then(dataBanco => {
+                            if (dataBanco.sucesso && dataBanco.banco) {
+                                exibirInfoBanco(dataBanco.banco);
+                            } else {
+                                ocultarInfoBanco();
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Erro ao buscar informações do banco:', err);
+                            ocultarInfoBanco();
+                        });
+                } else {
+                    ocultarInfoBanco();
+                }
+            } else {
+                ocultarInfoBanco();
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao buscar informações do empreendimento:', err);
+            ocultarInfoBanco();
+        });
+}
+
+function exibirInfoBanco(banco) {
+    const infoBancoDiv = document.getElementById('ca-info-banco');
+    const bancoNomeDiv = document.getElementById('ca-banco-nome');
+    const bancoAgenciaDiv = document.getElementById('ca-banco-agencia');
+    const bancoContaDiv = document.getElementById('ca-banco-conta');
+    const caminhoRemessaDiv = document.getElementById('ca-caminho-remessa');
+    
+    if (infoBancoDiv && bancoNomeDiv && bancoAgenciaDiv && bancoContaDiv && caminhoRemessaDiv) {
+        // Exibir nome do banco (prioridade: banco > apelido > id)
+        const nomeBanco = banco.banco || banco.apelido || `Banco ID ${banco.id}`;
+        bancoNomeDiv.textContent = nomeBanco;
+        
+        // Exibir agência
+        const agencia = banco.agencia || 'Não informado';
+        bancoAgenciaDiv.textContent = agencia;
+        
+        // Exibir conta corrente
+        const conta = banco.conta || 'Não informado';
+        bancoContaDiv.textContent = conta;
+        
+        // Exibir caminho da remessa
+        const caminhoRemessa = banco.caminho_remessa || 'Não informado';
+        caminhoRemessaDiv.textContent = caminhoRemessa;
+        
+        // Mostrar a seção
+        infoBancoDiv.style.display = 'block';
+    }
+}
+
+function ocultarInfoBanco() {
+    const infoBancoDiv = document.getElementById('ca-info-banco');
+    if (infoBancoDiv) {
+        infoBancoDiv.style.display = 'none';
+    }
+    
+    const bancoNomeDiv = document.getElementById('ca-banco-nome');
+    const bancoAgenciaDiv = document.getElementById('ca-banco-agencia');
+    const bancoContaDiv = document.getElementById('ca-banco-conta');
+    const caminhoRemessaDiv = document.getElementById('ca-caminho-remessa');
+    if (bancoNomeDiv) bancoNomeDiv.textContent = '-';
+    if (bancoAgenciaDiv) bancoAgenciaDiv.textContent = '-';
+    if (bancoContaDiv) bancoContaDiv.textContent = '-';
+    if (caminhoRemessaDiv) caminhoRemessaDiv.textContent = '-';
+}
+
+function limparGridCobrancaAutomatica() {
+    const tabelaBody = document.getElementById('tabela-cobranca-automatica-body');
+    if (tabelaBody) {
+        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Selecione o empreendimento e o período de referência, depois clique em "Pesquisar Títulos".</td></tr>';
+    }
+    titulosCobrancaAutomatica = [];
+    atualizarBotaoProcessar();
+}
+
+function pesquisarTitulosCobrancaAutomatica() {
+    const empreendimentoId = document.getElementById('ca-empreendimento')?.value || '';
+    const periodoInicio = document.getElementById('ca-periodo-inicio')?.value || '';
+    const periodoFim = document.getElementById('ca-periodo-fim')?.value || '';
+    const titulo = document.getElementById('ca-titulo')?.value.trim() || '';
+    const contrato = document.getElementById('ca-contrato')?.value.trim() || '';
+    const tabelaBody = document.getElementById('tabela-cobranca-automatica-body');
+    const mensagemDiv = document.getElementById('ca-mensagem');
+    
+    // Validações
+    if (!empreendimentoId) {
+        mostrarMensagemCobrancaAutomatica('Selecione o empreendimento.', 'erro');
+        return;
+    }
+    
+    if (!periodoInicio || !periodoFim) {
+        mostrarMensagemCobrancaAutomatica('Informe o período de referência (data início e data fim).', 'erro');
+        return;
+    }
+    
+    // Mostrar loading
+    if (tabelaBody) {
+        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
+    }
+    
+    // Construir parâmetros
+    const params = new URLSearchParams();
+    params.append('action', 'pesquisar-titulos');
+    params.append('empreendimento_id', empreendimentoId);
+    params.append('periodo_inicio', periodoInicio);
+    params.append('periodo_fim', periodoFim);
+    if (titulo) params.append('titulo', titulo);
+    if (contrato) params.append('contrato', contrato);
+    
+    fetch(`/SISIPTU/php/cobranca_automatica_api.php?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso) {
+                mostrarMensagemCobrancaAutomatica(`Encontrados ${data.total || 0} título(s).`, 'sucesso');
+                
+                // Armazenar títulos globalmente
+                titulosCobrancaAutomatica = data.titulos || [];
+                
+                // Atualizar grid
+                if (tabelaBody) {
+                    if (!data.titulos || data.titulos.length === 0) {
+                        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Nenhum título encontrado para os filtros selecionados.</td></tr>';
+                        atualizarBotaoProcessar();
+                    } else {
+                        let html = '';
+                        data.titulos.forEach((t, index) => {
+                            const vencimento = t.datavencimento ? formatarData(t.datavencimento) : '-';
+                            const valor = parseFloat(t.valor_mensal || 0).toFixed(2).replace('.', ',');
+                            const tituloId = t.id;
+                            
+                            html += `
+                                <tr>
+                                    <td style="text-align: center;">
+                                        <input type="checkbox" data-titulo-id="${tituloId}" data-titulo-index="${index}" style="cursor: pointer;">
+                                    </td>
+                                    <td>${t.titulo || t.id || '-'}</td>
+                                    <td>${t.cliente_nome || '-'}</td>
+                                    <td>${t.parcelamento || '-'}</td>
+                                    <td>${vencimento}</td>
+                                    <td style="text-align: right;">R$ ${valor}</td>
+                                </tr>
+                            `;
+                        });
+                        tabelaBody.innerHTML = html;
+                        
+                        // Adicionar event listeners aos checkboxes
+                        document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                            cb.addEventListener('change', function() {
+                                atualizarCheckTodos();
+                                atualizarBotaoProcessar();
+                            });
+                        });
+                        
+                        atualizarBotaoProcessar();
+                    }
+                }
+            } else {
+                mostrarMensagemCobrancaAutomatica(data.mensagem || 'Erro ao pesquisar títulos.', 'erro');
+                if (tabelaBody) {
+                    tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao pesquisar títulos.</td></tr>';
+                }
+                atualizarBotaoProcessar();
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao pesquisar títulos:', err);
+            mostrarMensagemCobrancaAutomatica('Erro ao pesquisar títulos. Verifique o console para mais detalhes.', 'erro');
+            if (tabelaBody) {
+                tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao pesquisar títulos.</td></tr>';
+            }
+        });
+}
+
+function atualizarCheckTodos() {
+    const checkTodos = document.getElementById('check-todos-titulos');
+    if (!checkTodos) return;
+    
+    const checkboxes = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]');
+    const todosSelecionados = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
+    checkTodos.checked = todosSelecionados;
+}
+
+function processarCobrancaAutomatica() {
+    const selecionados = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]:checked');
+    
+    if (selecionados.length === 0) {
+        mostrarMensagemCobrancaAutomatica('Selecione pelo menos um título para processar.', 'erro');
+        return;
+    }
+    
+    // Coletar IDs dos títulos selecionados
+    const titulosIds = Array.from(selecionados).map(cb => {
+        const index = parseInt(cb.getAttribute('data-titulo-index'));
+        return titulosCobrancaAutomatica[index];
+    });
+    
+    // Coletar dados do formulário
+    const empreendimentoId = document.getElementById('ca-empreendimento')?.value || '';
+    const periodoInicio = document.getElementById('ca-periodo-inicio')?.value || '';
+    const periodoFim = document.getElementById('ca-periodo-fim')?.value || '';
+    const remissaoBoletos = document.getElementById('ca-remissao-boletos')?.checked || false;
+    
+    if (!empreendimentoId || !periodoInicio || !periodoFim) {
+        mostrarMensagemCobrancaAutomatica('Preencha todos os campos obrigatórios.', 'erro');
+        return;
+    }
+    
+    // Confirmar processamento
+    const confirmar = confirm(`Deseja processar ${titulosIds.length} título(s) selecionado(s)?`);
+    if (!confirmar) {
+        return;
+    }
+    
+    // Mostrar loading
+    mostrarMensagemCobrancaAutomatica('Processando títulos...', 'info');
+    const btnProcessar = document.getElementById('btn-processar-cobranca');
+    if (btnProcessar) {
+        btnProcessar.disabled = true;
+    }
+    
+    // Preparar dados para envio
+    const dados = {
+        action: 'processar',
+        empreendimento_id: empreendimentoId,
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        remissao_boletos: remissaoBoletos ? 1 : 0,
+        titulos: titulosIds.map(t => ({
+            id: t.id,
+            titulo: t.titulo || t.id,
+            contrato: t.contrato,
+            cliente_nome: t.cliente_nome,
+            modulo_id: t.modulo_id,
+            valor_mensal: t.valor_mensal,
+            datavencimento: t.datavencimento
+        }))
+    };
+    
+    fetch('/SISIPTU/php/cobranca_automatica_api.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dados)
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.sucesso) {
+            mostrarMensagemCobrancaAutomatica(data.mensagem || `Processados ${titulosIds.length} título(s) com sucesso!`, 'sucesso');
+            
+            // Atualizar grid removendo os processados
+            setTimeout(() => {
+                pesquisarTitulosCobrancaAutomatica();
+            }, 2000);
+        } else {
+            mostrarMensagemCobrancaAutomatica(data.mensagem || 'Erro ao processar títulos.', 'erro');
+        }
+    })
+    .catch(err => {
+        console.error('Erro ao processar títulos:', err);
+        mostrarMensagemCobrancaAutomatica('Erro ao processar títulos. Verifique o console para mais detalhes.', 'erro');
+    })
+    .finally(() => {
+        if (btnProcessar) {
+            atualizarBotaoProcessar();
+        }
+    });
+}
+
+function mostrarMensagemCobrancaAutomatica(mensagem, tipo) {
+    const mensagemDiv = document.getElementById('ca-mensagem');
+    if (!mensagemDiv) return;
+    
+    mensagemDiv.textContent = mensagem;
+    mensagemDiv.className = `mensagem ${tipo}`;
+    mensagemDiv.style.display = 'block';
+    
+    // Scroll para a mensagem
+    mensagemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    
+    // Ocultar após 5 segundos se for sucesso ou info
+    if (tipo === 'sucesso' || tipo === 'info') {
+        setTimeout(() => {
+            mensagemDiv.style.display = 'none';
+        }, 5000);
+    }
+}
+
+function inicializarRetornoBancario() {
+    // Carregar bancos no select
+    carregarBancosSelectRetornoBancario();
+    
+    // Event listener para botão processar
+    const btnProcessar = document.getElementById('btn-processar-retorno');
+    if (btnProcessar) {
+        btnProcessar.addEventListener('click', function() {
+            processarArquivoRetorno();
+        });
+    }
+}
+
+function carregarBancosSelectRetornoBancario() {
+    const selectBanco = document.getElementById('rb-banco');
+    if (!selectBanco) return;
+    
+    fetch('/SISIPTU/php/bancos_api.php?action=list')
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso && data.bancos) {
+                selectBanco.innerHTML = '<option value="">Selecione o banco...</option>';
+                data.bancos.forEach(banco => {
+                    const option = document.createElement('option');
+                    option.value = banco.id;
+                    option.textContent = banco.banco || banco.apelido || `Banco ${banco.id}`;
+                    selectBanco.appendChild(option);
+                });
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao carregar bancos:', err);
+        });
+}
+
+function processarArquivoRetorno() {
+    const inputArquivo = document.getElementById('rb-arquivo');
+    const selectBanco = document.getElementById('rb-banco');
+    const inputDataMovimento = document.getElementById('rb-data-movimento');
+    const tabelaBody = document.getElementById('tabela-retorno-bancario-body');
+    const mensagemDiv = document.getElementById('rb-mensagem');
+    
+    if (!inputArquivo || !inputArquivo.files || inputArquivo.files.length === 0) {
+        mostrarMensagemRetornoBancario('Selecione um arquivo para processar.', 'erro');
+        return;
+    }
+    
+    if (!selectBanco || !selectBanco.value) {
+        mostrarMensagemRetornoBancario('Selecione o banco.', 'erro');
+        return;
+    }
+    
+    const arquivo = inputArquivo.files[0];
+    const bancoId = selectBanco.value;
+    const dataMovimento = inputDataMovimento ? inputDataMovimento.value : '';
+    
+    // Criar FormData para enviar arquivo
+    const formData = new FormData();
+    formData.append('arquivo', arquivo);
+    formData.append('banco_id', bancoId);
+    formData.append('data_movimento', dataMovimento);
+    formData.append('action', 'processar');
+    
+    // Mostrar loading
+    if (tabelaBody) {
+        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Processando arquivo...</td></tr>';
+    }
+    
+    fetch('/SISIPTU/php/retorno_bancario_api.php', {
+        method: 'POST',
+        body: formData
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.sucesso) {
+            mostrarMensagemRetornoBancario(data.mensagem || 'Arquivo processado com sucesso!', 'sucesso');
+            
+            // Atualizar tabela com resultados
+            if (tabelaBody && data.registros) {
+                if (data.registros.length === 0) {
+                    tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Nenhum registro encontrado no arquivo.</td></tr>';
+                } else {
+                    let html = '';
+                    data.registros.forEach(reg => {
+                        html += `
+                            <tr>
+                                <td>${reg.linha || '-'}</td>
+                                <td>${reg.tipo || '-'}</td>
+                                <td>${reg.nosso_numero || '-'}</td>
+                                <td>R$ ${parseFloat(reg.valor || 0).toFixed(2).replace('.', ',')}</td>
+                                <td>${reg.data_pagamento || '-'}</td>
+                                <td>${reg.status || '-'}</td>
+                            </tr>
+                        `;
+                    });
+                    tabelaBody.innerHTML = html;
+                }
+            }
+        } else {
+            mostrarMensagemRetornoBancario(data.mensagem || 'Erro ao processar arquivo.', 'erro');
+            if (tabelaBody) {
+                tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao processar arquivo.</td></tr>';
+            }
+        }
+    })
+    .catch(err => {
+        console.error('Erro ao processar arquivo:', err);
+        mostrarMensagemRetornoBancario('Erro ao processar arquivo. Verifique o console para mais detalhes.', 'erro');
+        if (tabelaBody) {
+            tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao processar arquivo.</td></tr>';
+        }
+    });
+}
+
+function mostrarMensagemRetornoBancario(mensagem, tipo) {
+    const mensagemDiv = document.getElementById('rb-mensagem');
+    if (!mensagemDiv) return;
+    
+    mensagemDiv.textContent = mensagem;
+    mensagemDiv.className = `mensagem ${tipo}`;
+    mensagemDiv.style.display = 'block';
+    
+    // Scroll para a mensagem
+    mensagemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    
+    // Ocultar após 5 segundos se for sucesso
+    if (tipo === 'sucesso') {
+        setTimeout(() => {
+            mensagemDiv.style.display = 'none';
+        }, 5000);
+    }
 }
 
 function carregarEmpreendimentosSelectCobrancaAutomatica() {

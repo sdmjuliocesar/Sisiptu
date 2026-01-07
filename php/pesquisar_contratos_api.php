@@ -1,7 +1,7 @@
 <?php
 session_start();
 
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../config/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -100,10 +100,12 @@ try {
                     c.data_criacao,
                     c.data_atualizacao,
                     e.nome as empreendimento_nome,
-                    m.nome as modulo_nome
+                    m.nome as modulo_nome,
+                    cli.nome as cliente_nome
                 FROM contratos c
                 LEFT JOIN empreendimentos e ON c.empreendimento_id = e.id
                 LEFT JOIN modulos m ON c.modulo_id = m.id
+                LEFT JOIN clientes cli ON c.cliente_id = cli.id
             ";
             
             if (!empty($where)) {
@@ -159,10 +161,12 @@ try {
                     c.data_criacao,
                     c.data_atualizacao,
                     e.nome as empreendimento_nome,
-                    m.nome as modulo_nome
+                    m.nome as modulo_nome,
+                    cli.nome as cliente_nome
                 FROM contratos c
                 LEFT JOIN empreendimentos e ON c.empreendimento_id = e.id
                 LEFT JOIN modulos m ON c.modulo_id = m.id
+                LEFT JOIN clientes cli ON c.cliente_id = cli.id
                 ORDER BY c.data_criacao DESC
             ");
             

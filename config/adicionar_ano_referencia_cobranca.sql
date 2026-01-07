@@ -36,3 +36,4 @@ CREATE INDEX IF NOT EXISTS idx_cobranca_ano_referencia ON cobranca(ano_referenci
 
 
 
+

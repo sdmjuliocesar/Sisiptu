@@ -4,7 +4,7 @@
  * Acesse: http://localhost/SISIPTU/diagnostico_pdf.php
  */
 
-require_once __DIR__ . '/config/database.php';
+require_once __DIR__ . '/php/database.php';
 require_once __DIR__ . '/config/logger.php';
 
 echo "<h2>🔍 Diagnóstico de Geração de PDF</h2>";

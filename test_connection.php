@@ -125,7 +125,7 @@
         echo '</div>';
         
         // Incluir arquivo de configuração
-        require_once __DIR__ . '/config/database.php';
+        require_once __DIR__ . '/php/database.php';
         
         echo '<div class="info">';
         echo '<h3>📋 Configurações de Conexão:</h3>';
@@ -198,7 +198,7 @@
             } else {
                 echo '<div class="result error">';
                 echo '<h3>⚠️ Tabela "usuarios" não encontrada</h3>';
-                echo '<p>A tabela ainda não foi criada. Execute o script SQL em <code>config/database.sql</code></p>';
+                echo '<p>A tabela ainda não foi criada. Execute o script SQL em <code>config/database.sql</code> (o arquivo database.php está em <code>php/database.php</code>)</p>';
                 echo '</div>';
             }
             
@@ -214,7 +214,7 @@
             echo '<h3>🔧 Possíveis Soluções:</h3>';
             echo '<ul style="margin-left: 20px; margin-top: 10px;">';
             echo '<li>Verifique se o PostgreSQL está rodando</li>';
-            echo '<li>Confirme se as credenciais estão corretas em <code>config/database.php</code></li>';
+            echo '<li>Confirme se as credenciais estão corretas em <code>php/database.php</code></li>';
             echo '<li>Verifique se o banco de dados <strong>' . DB_NAME . '</strong> existe</li>';
             echo '<li>Confirme se o usuário <strong>' . DB_USER . '</strong> tem permissões</li>';
             echo '<li>Verifique se a porta <strong>' . DB_PORT . '</strong> está correta</li>';

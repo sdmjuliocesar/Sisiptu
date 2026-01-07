@@ -8,7 +8,7 @@ if (ob_get_level()) {
 
 session_start();
 
-require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/../config/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
@@ -249,7 +249,7 @@ try {
             }
             
             // Mapeamento de campos (ajustar conforme necessário)
-            // Assumindo que o CSV tem as colunas na ordem: contrato, cpf_cnpj, cliente_nome, area, metragem, vrm2, inscricao, valor_venal, aliquota, tx_coleta_lixo, dia_vencimento, desconto_a_vista, parcelamento, obs, situacao
+            // Assumindo que o CSV tem as colunas na ordem: contrato, cpf_cnpj, cliente_nome, area, metragem, vrm2, inscricao, valor_venal, aliquota, tx_coleta_lixo, desconto_a_vista, parcelamento, obs, situacao
             // Você pode ajustar este mapeamento conforme a estrutura do seu arquivo
             
             $importados = 0;
@@ -273,11 +273,10 @@ try {
                     $valor_venal = isset($linha[7]) && $linha[7] !== '' ? floatval(str_replace(',', '.', $linha[7])) : null;
                     $aliquota = isset($linha[8]) && $linha[8] !== '' ? floatval(str_replace(',', '.', $linha[8])) : null;
                     $tx_coleta_lixo = isset($linha[9]) && $linha[9] !== '' ? floatval(str_replace(',', '.', $linha[9])) : null;
-                    $dia_vencimento = isset($linha[10]) && $linha[10] !== '' ? intval($linha[10]) : null;
-                    $desconto_a_vista = isset($linha[11]) && $linha[11] !== '' ? floatval(str_replace(',', '.', $linha[11])) : null;
-                    $parcelamento = isset($linha[12]) && $linha[12] !== '' ? intval($linha[12]) : null;
-                    $obs = isset($linha[13]) ? trim($linha[13]) : null;
-                    $situacao = isset($linha[14]) ? trim($linha[14]) : null;
+                    $desconto_a_vista = isset($linha[10]) && $linha[10] !== '' ? floatval(str_replace(',', '.', $linha[10])) : null;
+                    $parcelamento = isset($linha[11]) && $linha[11] !== '' ? intval($linha[11]) : null;
+                    $obs = isset($linha[12]) ? trim($linha[12]) : null;
+                    $situacao = isset($linha[13]) ? trim($linha[13]) : null;
                     
                     // Validar campos obrigatórios
                     if (empty($contrato)) {
@@ -336,9 +335,9 @@ try {
                     $stmt = $conn->prepare("
                         INSERT INTO contratos (
                             empreendimento_id, modulo_id, cliente_id, contrato, area, inscricao, metragem, vrm2, 
-                            valor_venal, aliquota, tx_coleta_lixo, desconto_a_vista, dia_vencimento, 
+                            valor_venal, aliquota, tx_coleta_lixo, desconto_a_vista, 
                             parcelamento, obs, valor_mensal, valor_anual, cpf_cnpj, situacao
-                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     ");
                     
                     $stmt->execute([
@@ -354,7 +353,6 @@ try {
                         $aliquota,
                         $tx_coleta_lixo,
                         $desconto_a_vista,
-                        $dia_vencimento,
                         $parcelamento,
                         $obs,
                         $valor_mensal,

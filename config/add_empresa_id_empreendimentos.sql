@@ -1,4 +1,4 @@
--- Script SQL validado para adicionar a coluna banco_id na tabela empreendimentos
+-- Script SQL para adicionar campo empresa_id na tabela empreendimentos
 -- Este script é idempotente (pode ser executado múltiplas vezes sem erro)
 
 -- Verificar se a tabela empreendimentos existe
@@ -14,20 +14,20 @@ BEGIN
     END IF;
 END $$;
 
--- Verificar se a tabela bancos existe
+-- Verificar se a tabela clientes existe (para referência de empresas)
 DO $$ 
 BEGIN
     IF NOT EXISTS (
         SELECT 1 
         FROM information_schema.tables 
         WHERE table_schema = 'public' 
-        AND table_name = 'bancos'
+        AND table_name = 'clientes'
     ) THEN
-        RAISE EXCEPTION 'Tabela bancos não existe. Execute o script database.sql primeiro.';
+        RAISE EXCEPTION 'Tabela clientes não existe. Execute o script database.sql primeiro.';
     END IF;
 END $$;
 
--- Adicionar coluna banco_id na tabela empreendimentos se não existir
+-- Adicionar coluna empresa_id na tabela empreendimentos se não existir
 DO $$ 
 BEGIN
     IF NOT EXISTS (
@@ -35,19 +35,19 @@ BEGIN
         FROM information_schema.columns 
         WHERE table_schema = 'public'
         AND table_name = 'empreendimentos' 
-        AND column_name = 'banco_id'
+        AND column_name = 'empresa_id'
     ) THEN
         ALTER TABLE empreendimentos 
-        ADD COLUMN banco_id INTEGER REFERENCES bancos(id);
+        ADD COLUMN empresa_id INTEGER REFERENCES clientes(id);
         
-        RAISE NOTICE 'Coluna banco_id adicionada com sucesso na tabela empreendimentos.';
+        -- Criar índice para melhorar performance
+        CREATE INDEX IF NOT EXISTS idx_empreendimentos_empresa_id ON empreendimentos(empresa_id);
+        
+        RAISE NOTICE 'Coluna empresa_id adicionada com sucesso na tabela empreendimentos.';
     ELSE
-        RAISE NOTICE 'Coluna banco_id já existe na tabela empreendimentos.';
+        RAISE NOTICE 'Coluna empresa_id já existe na tabela empreendimentos.';
     END IF;
 END $$;
-
--- Criar índice para banco_id se não existir
-CREATE INDEX IF NOT EXISTS idx_empreendimentos_banco_id ON empreendimentos(banco_id);
 
 -- Verificar se a coluna foi criada corretamente
 DO $$ 
@@ -56,31 +56,16 @@ DECLARE
 BEGIN
     SELECT EXISTS (
         SELECT 1 
-        FROM information_schema.columns 
+        FROM information_schema.columns
         WHERE table_schema = 'public'
         AND table_name = 'empreendimentos' 
-        AND column_name = 'banco_id'
-        AND data_type = 'integer'
+        AND column_name = 'empresa_id'
     ) INTO col_exists;
     
     IF col_exists THEN
-        RAISE NOTICE 'Validação: Coluna banco_id criada com sucesso!';
+        RAISE NOTICE 'Validação: Coluna empresa_id criada com sucesso na tabela empreendimentos!';
     ELSE
-        RAISE WARNING 'Validação: Coluna banco_id não foi criada corretamente.';
+        RAISE WARNING 'Validação: Coluna empresa_id não foi encontrada na tabela empreendimentos.';
     END IF;
 END $$;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
