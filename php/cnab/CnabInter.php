@@ -1,11 +1,11 @@
 <?php
 /**
- * Implementação CNAB 400 para Banco do Brasil
+ * Implementação CNAB 400 para Banco Inter
  */
-class CnabBancoBrasil extends CnabAbstract {
+class CnabInter extends CnabAbstract {
     public function __construct(int $versaoCnab = 400) {
-        $this->codigoBanco = '001';
-        $this->nomeBanco = 'Banco do Brasil';
+        $this->codigoBanco = '077';
+        $this->nomeBanco = 'Banco Inter';
         $this->versaoCnab = $versaoCnab;
     }
     
@@ -18,7 +18,6 @@ class CnabBancoBrasil extends CnabAbstract {
         
         $this->criarDiretorio($caminhoDestino);
         
-        // Gerar nome do arquivo
         $nomeArquivo = $this->gerarNomeArquivo($dadosBanco);
         $caminhoCompleto = rtrim($caminhoDestino, '/\\') . DIRECTORY_SEPARATOR . $nomeArquivo;
         
@@ -28,19 +27,16 @@ class CnabBancoBrasil extends CnabAbstract {
         }
         
         try {
-            // Header do arquivo
             $header = $this->gerarHeader($dadosBanco, count($titulos));
             fwrite($arquivo, $header . "\r\n");
             
-            // Registros de títulos
-            $sequencial = 2; // Começa em 2 (após header)
+            $sequencial = 2;
             foreach ($titulos as $titulo) {
                 $registro = $this->gerarRegistroTitulo($dadosBanco, $titulo, $sequencial);
                 fwrite($arquivo, $registro . "\r\n");
                 $sequencial++;
             }
             
-            // Trailer do arquivo
             $trailer = $this->gerarTrailer($dadosBanco, count($titulos), $sequencial);
             fwrite($arquivo, $trailer . "\r\n");
             
@@ -51,9 +47,6 @@ class CnabBancoBrasil extends CnabAbstract {
         return $caminhoCompleto;
     }
     
-    /**
-     * Gera o header do arquivo CNAB 400
-     */
     private function gerarHeader(array $dadosBanco, int $totalTitulos): string {
         $linha = '';
         $linha .= '0'; // 001 - Tipo de registro
@@ -65,10 +58,10 @@ class CnabBancoBrasil extends CnabAbstract {
         $linha .= $this->formatarNumerico($dadosBanco['dv_agencia'] ?? '', 1); // 031 - Dígito verificador da agência
         $linha .= $this->formatarNumerico($dadosBanco['conta'], 8); // 032-039 - Número da conta corrente
         $linha .= $this->formatarNumerico($dadosBanco['dv_conta'] ?? '', 1); // 040 - Dígito verificador da conta
-        $linha .= str_repeat(' ', 6); // 041-046 - Complemento do registro
+        $linha .= str_repeat('0', 6); // 041-046 - Complemento do registro
         $linha .= $this->formatarAlfanumerico($dadosBanco['cedente'], 30); // 047-076 - Nome do cedente
         $linha .= $this->formatarNumerico($this->codigoBanco, 3); // 077-079 - Código do banco
-        $linha .= $this->formatarAlfanumerico('BANCO DO BRASIL', 15); // 080-094 - Nome do banco
+        $linha .= $this->formatarAlfanumerico('BANCO INTER', 15); // 080-094 - Nome do banco
         $linha .= date('dmy'); // 095-100 - Data de gravação do arquivo
         $linha .= str_repeat(' ', 8); // 101-108 - Identificação do sistema
         $linha .= str_repeat(' ', 7); // 109-115 - Complemento do registro
@@ -92,7 +85,7 @@ class CnabBancoBrasil extends CnabAbstract {
         $linha .= $this->formatarNumerico($dadosBanco['dv_conta'] ?? '', 1); // 031 - DV conta
         $linha .= str_repeat('0', 4); // 032-035 - Zeros
         $linha .= $this->formatarAlfanumerico($titulo['nosso_numero'] ?? $titulo['id'], 11); // 036-046 - Identificação do título no banco
-        $linha .= '21'; // 047-048 - Código da carteira
+        $linha .= $this->formatarNumerico($dadosBanco['carteira'] ?? '112', 2); // 047-048 - Código da carteira (Inter usa 112)
         $linha .= '01'; // 049-050 - Código da ocorrência
         $linha .= $this->formatarAlfanumerico($titulo['contrato'] ?? '', 10); // 051-060 - Seu número
         $linha .= $this->formatarData($titulo['datavencimento']); // 061-068 - Data de vencimento
@@ -109,16 +102,11 @@ class CnabBancoBrasil extends CnabAbstract {
         $linha .= $this->formatarValor(0, 13); // 126-138 - Valor do desconto
         $linha .= $this->formatarValor(0, 13); // 139-151 - Valor do IOF
         $linha .= $this->formatarValor($titulo['multa_calculada'] ?? 0, 13); // 152-164 - Valor do abatimento
-        // Nome do cliente
         $nomeCliente = $this->obterNomeCliente($titulo);
         $linha .= $this->formatarAlfanumerico($nomeCliente, 25); // 165-189 - Identificação do sacado
-        
-        // Endereço completo do cliente
         $enderecoCompleto = $this->montarEnderecoCliente($titulo, 40);
         $linha .= $this->formatarAlfanumerico($enderecoCompleto, 40); // 190-229 - Endereço do sacado
         $linha .= str_repeat(' ', 12); // 230-241 - Primeira mensagem
-        
-        // CEP do cliente
         $cep = $this->obterCepCliente($titulo);
         $linha .= $this->formatarAlfanumerico($cep, 8); // 242-249 - CEP
         $linha .= str_repeat(' ', 60); // 250-309 - Sacador/Avalista

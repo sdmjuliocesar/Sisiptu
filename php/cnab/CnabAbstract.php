@@ -138,11 +138,37 @@ abstract class CnabAbstract implements CnabInterface {
      * Cria o diretório se não existir
      */
     protected function criarDiretorio($caminho): void {
-        $diretorio = dirname($caminho);
+        // Se o caminho for relativo, converter para absoluto baseado no diretório do projeto
+        $caminhoOriginal = $caminho;
+        
+        if (!preg_match('/^[A-Z]:\\\\|^\/|^\\\\/', $caminho)) {
+            // Caminho relativo - converter para absoluto
+            $baseDir = dirname(__DIR__, 2); // Voltar 2 níveis de php/cnab para raiz do projeto
+            $caminho = $baseDir . DIRECTORY_SEPARATOR . str_replace(['/', '\\'], DIRECTORY_SEPARATOR, trim($caminho, '/\\'));
+        }
+        
+        // Normalizar separadores de diretório
+        $caminho = str_replace(['/', '\\'], DIRECTORY_SEPARATOR, $caminho);
+        
+        // Se o caminho for apenas um diretório (sem nome de arquivo), usar como está
+        $diretorio = $caminho;
+        if (pathinfo($caminho, PATHINFO_EXTENSION) || strpos(basename($caminho), '.') !== false) {
+            // Parece ser um arquivo, pegar o diretório
+            $diretorio = dirname($caminho);
+        }
+        
+        // Se o diretório não existir, tentar criar
         if (!is_dir($diretorio)) {
-            if (!mkdir($diretorio, 0755, true)) {
-                throw new Exception("Não foi possível criar o diretório: {$diretorio}");
+            if (!@mkdir($diretorio, 0755, true)) {
+                $error = error_get_last();
+                $mensagemErro = $error['message'] ?? 'Desconhecido';
+                throw new Exception("Não foi possível criar o diretório: {$diretorio}. Erro: {$mensagemErro}. Caminho original: {$caminhoOriginal}");
             }
+        }
+        
+        // Verificar se o diretório é gravável
+        if (!is_writable($diretorio)) {
+            throw new Exception("Diretório não possui permissão de escrita: {$diretorio}");
         }
     }
     
@@ -195,6 +221,79 @@ abstract class CnabAbstract implements CnabInterface {
         }
         
         return true;
+    }
+    
+    /**
+     * Monta o endereço completo do cliente para o CNAB
+     * @param array $titulo Dados do título com informações do cliente
+     * @param int $tamanhoMax Tamanho máximo do campo de endereço
+     * @return string Endereço formatado
+     */
+    protected function montarEnderecoCliente(array $titulo, int $tamanhoMax = 40): string {
+        $enderecoCompleto = '';
+        
+        // Endereço
+        if (!empty($titulo['endereco_cliente'])) {
+            $enderecoCompleto = trim($titulo['endereco_cliente']);
+        }
+        
+        // Bairro
+        if (!empty($titulo['bairro_cliente'])) {
+            $bairro = trim($titulo['bairro_cliente']);
+            if ($enderecoCompleto) {
+                $enderecoCompleto .= ', ' . $bairro;
+            } else {
+                $enderecoCompleto = $bairro;
+            }
+        }
+        
+        // Cidade
+        if (!empty($titulo['cidade_cliente'])) {
+            $cidade = trim($titulo['cidade_cliente']);
+            if ($enderecoCompleto) {
+                $enderecoCompleto .= ' - ' . $cidade;
+            } else {
+                $enderecoCompleto = $cidade;
+            }
+        }
+        
+        // UF
+        if (!empty($titulo['uf_cliente'])) {
+            $uf = strtoupper(trim($titulo['uf_cliente']));
+            if ($enderecoCompleto) {
+                $enderecoCompleto .= '/' . $uf;
+            } else {
+                $enderecoCompleto = $uf;
+            }
+        }
+        
+        // Limitar ao tamanho máximo
+        if (strlen($enderecoCompleto) > $tamanhoMax) {
+            $enderecoCompleto = substr($enderecoCompleto, 0, $tamanhoMax);
+        }
+        
+        return $enderecoCompleto;
+    }
+    
+    /**
+     * Obtém o CEP do cliente formatado (apenas números)
+     * @param array $titulo Dados do título
+     * @return string CEP sem formatação
+     */
+    protected function obterCepCliente(array $titulo): string {
+        $cep = $titulo['cep_cliente'] ?? $titulo['cep'] ?? '';
+        // Remover formatação (pontos, traços, espaços)
+        $cep = preg_replace('/[^0-9]/', '', $cep);
+        return $cep;
+    }
+    
+    /**
+     * Obtém o nome completo do cliente
+     * @param array $titulo Dados do título
+     * @return string Nome do cliente
+     */
+    protected function obterNomeCliente(array $titulo): string {
+        return $titulo['cliente_nome_completo'] ?? $titulo['cliente_nome'] ?? '';
     }
 }
 

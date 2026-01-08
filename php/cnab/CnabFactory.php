@@ -10,6 +10,7 @@ class CnabFactory {
     private static $bancos = [
         '001' => 'CnabBancoBrasil',
         '033' => 'CnabSantander',
+        '077' => 'CnabInter',
         '104' => 'CnabCaixa',
         '237' => 'CnabBradesco',
         '341' => 'CnabItau',

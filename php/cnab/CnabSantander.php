@@ -89,10 +89,13 @@ class CnabSantander extends CnabAbstract {
         $linha .= $this->formatarValor(0, 13); // 111-123
         $linha .= $this->formatarValor(0, 13); // 124-136
         $linha .= $this->formatarValor($titulo['multa_calculada'] ?? 0, 13); // 137-149
-        $linha .= $this->formatarAlfanumerico($titulo['cliente_nome'] ?? '', 25); // 150-174
-        $linha .= str_repeat(' ', 40); // 175-214
+        $nomeCliente = $this->obterNomeCliente($titulo);
+        $linha .= $this->formatarAlfanumerico($nomeCliente, 25); // 150-174
+        $enderecoCompleto = $this->montarEnderecoCliente($titulo, 40);
+        $linha .= $this->formatarAlfanumerico($enderecoCompleto, 40); // 175-214
         $linha .= str_repeat(' ', 12); // 215-226
-        $linha .= $this->formatarAlfanumerico($titulo['cep'] ?? '', 8); // 227-234
+        $cep = $this->obterCepCliente($titulo);
+        $linha .= $this->formatarAlfanumerico($cep, 8); // 227-234
         $linha .= str_repeat(' ', 60); // 235-294
         $linha .= str_repeat('0', 6); // 295-300
         $linha .= ' '; // 301

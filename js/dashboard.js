@@ -2152,10 +2152,18 @@ function inicializarCadastroBancos() {
         });
     }
     
-    // Função para selecionar diretório Remessa
+    // Função para selecionar diretório Remessa (caminho absoluto)
     window.selecionarDiretorioRemessa = function(diretorio) {
         if (inputRemessa) {
-            inputRemessa.value = diretorio;
+            // Garantir que é caminho absoluto (Windows)
+            let caminho = diretorio.trim();
+            // Normalizar separadores
+            caminho = caminho.replace(/\//g, '\\');
+            // Garantir que termina com \ se for diretório
+            if (caminho.length > 0 && !caminho.endsWith('\\') && caminho.length > 3) {
+                caminho += '\\';
+            }
+            inputRemessa.value = caminho;
         }
         if (listaDiretoriosRemessa) {
             listaDiretoriosRemessa.style.display = 'none';
@@ -2212,10 +2220,18 @@ function inicializarCadastroBancos() {
         });
     }
     
-    // Função para selecionar diretório Retorno
+    // Função para selecionar diretório Retorno (caminho absoluto)
     window.selecionarDiretorioRetorno = function(diretorio) {
         if (inputRetorno) {
-            inputRetorno.value = diretorio;
+            // Garantir que é caminho absoluto (Windows)
+            let caminho = diretorio.trim();
+            // Normalizar separadores
+            caminho = caminho.replace(/\//g, '\\');
+            // Garantir que termina com \ se for diretório
+            if (caminho.length > 0 && !caminho.endsWith('\\') && caminho.length > 3) {
+                caminho += '\\';
+            }
+            inputRetorno.value = caminho;
         }
         if (listaDiretoriosRetorno) {
             listaDiretoriosRetorno.style.display = 'none';
@@ -2234,67 +2250,107 @@ function inicializarCadastroBancos() {
         });
     }
     
-    // Função para carregar lista de diretórios
+    // Função para carregar lista de diretórios (discos e pastas do Windows)
     function carregarListaDiretoriosBanco(tipo) {
         const input = tipo === 'remessa' ? inputRemessa : inputRetorno;
         const lista = tipo === 'remessa' ? listaDiretoriosRemessa : listaDiretoriosRetorno;
         
         if (!lista) return;
         
-        fetch('/SISIPTU/php/importar_clientes_api.php?action=listar-diretorios')
+        // Obter caminho atual do input ou começar pelos discos
+        const caminhoAtual = input ? input.value.trim() : '';
+        
+        // Construir URL da API
+        let url = '/SISIPTU/php/listar_diretorios_api.php?action=listar-pastas';
+        if (caminhoAtual) {
+            url += '&caminho=' + encodeURIComponent(caminhoAtual);
+        }
+        
+        fetch(url)
             .then(r => r.json())
             .then(data => {
                 if (!data.sucesso) {
-                    lista.innerHTML = '';
-                    lista.style.display = 'none';
+                    lista.innerHTML = '<div style="padding: 10px; color: #d32f2f;">Erro: ' + (data.mensagem || 'Erro desconhecido') + '</div>';
+                    lista.style.display = 'block';
                     return;
                 }
                 
-                const diretorios = data.diretorios || [];
-                if (diretorios.length === 0) {
-                    lista.innerHTML = '';
-                    lista.style.display = 'none';
+                const pastas = data.pastas || [];
+                if (pastas.length === 0) {
+                    lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhuma pasta encontrada.</div>';
+                    lista.style.display = 'block';
                     return;
                 }
                 
-                // Filtrar diretórios baseado no que o usuário digitou
-                const filtro = input ? input.value.trim().toLowerCase() : '';
-                const diretoriosFiltrados = diretorios.filter(dir => {
-                    if (!filtro) return true;
-                    return dir.toLowerCase().includes(filtro);
-                });
-                
-                if (diretoriosFiltrados.length === 0) {
-                    lista.innerHTML = '';
-                    lista.style.display = 'none';
-                    return;
-                }
-                
+                const funcaoNavegar = tipo === 'remessa' ? 'navegarDiretorioRemessa' : 'navegarDiretorioRetorno';
                 const funcaoSelecionar = tipo === 'remessa' ? 'selecionarDiretorioRemessa' : 'selecionarDiretorioRetorno';
                 
-                lista.innerHTML = diretoriosFiltrados.map(dir => {
+                // Mostrar caminho atual
+                let html = '';
+                if (data.caminho_atual) {
+                    html += `<div style="padding: 8px 12px; background: #f5f5f5; border-bottom: 2px solid #ddd; font-weight: bold; color: #2d8659;">
+                        📍 ${data.caminho_atual}
+                    </div>`;
+                }
+                
+                // Listar pastas
+                html += pastas.map(pasta => {
+                    const caminhoEscapado = pasta.caminho.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+                    const nome = pasta.nome || pasta.caminho;
+                    const icone = pasta.tipo === 'disco' ? '💿' : pasta.tipo === 'voltar' ? '⬆️' : '📁';
+                    const estiloVoltar = pasta.tipo === 'voltar' ? 'font-weight: bold; color: #1976d2;' : '';
+                    
                     return `
-                        <div class="ic-item-diretorio" style="padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; transition: background-color 0.2s;" 
+                        <div class="ic-item-diretorio" style="padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; transition: background-color 0.2s; ${estiloVoltar}" 
                              onmouseover="this.style.backgroundColor='#e3f2fd'; this.style.color='#1976d2';" 
                              onmouseout="this.style.backgroundColor=''; this.style.color='';"
-                             onclick="${funcaoSelecionar}('${dir.replace(/'/g, "\\'")}')">
-                            <span style="font-size: 16px;">📁</span>
-                            <span style="flex: 1;">${dir}/</span>
+                             onclick="${pasta.tipo === 'voltar' || pasta.tipo === 'disco' || pasta.tipo === 'pasta' ? funcaoNavegar + "('" + caminhoEscapado + "')" : funcaoSelecionar + "('" + caminhoEscapado + "')"}">
+                            <span style="font-size: 16px;">${icone}</span>
+                            <span style="flex: 1;">${nome}</span>
+                            ${pasta.tipo === 'pasta' || pasta.tipo === 'disco' ? '<span style="color: #999; font-size: 12px;">▶</span>' : ''}
                         </div>
                     `;
                 }).join('');
                 
-                // Mostrar lista se o input estiver focado
-                if (input && document.activeElement === input) {
-                    lista.style.display = 'block';
+                // Adicionar botão "Selecionar este diretório" se houver caminho atual
+                if (data.caminho_atual && data.caminho_atual.length > 3) {
+                    const caminhoEscapado = data.caminho_atual.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
+                    html += `
+                        <div style="padding: 12px; background: #e8f5e9; border-top: 2px solid #4caf50;">
+                            <button type="button" onclick="${funcaoSelecionar}('${caminhoEscapado}')" 
+                                    style="width: 100%; padding: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
+                                ✓ Selecionar este diretório
+                            </button>
+                        </div>
+                    `;
                 }
+                
+                lista.innerHTML = html;
+                
+                // Mostrar lista
+                lista.style.display = 'block';
             })
             .catch(err => {
                 console.error('Erro ao carregar diretórios:', err);
-                lista.innerHTML = '';
-                lista.style.display = 'none';
+                lista.innerHTML = '<div style="padding: 10px; color: #d32f2f;">Erro ao carregar diretórios. Verifique o console.</div>';
+                lista.style.display = 'block';
             });
     }
+    
+    // Função para navegar em um diretório (sem selecionar)
+    window.navegarDiretorioRemessa = function(caminho) {
+        if (inputRemessa) {
+            inputRemessa.value = caminho;
+        }
+        carregarListaDiretoriosBanco('remessa');
+    };
+    
+    window.navegarDiretorioRetorno = function(caminho) {
+        if (inputRetorno) {
+            inputRetorno.value = caminho;
+        }
+        carregarListaDiretoriosBanco('retorno');
+    };
 
     carregarBancos();
 
@@ -6425,10 +6481,10 @@ function carregarPagina(page) {
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                 <h4 style="margin: 0; color: #2d8659;">Títulos que serão enviados</h4>
                                 <div style="display: flex; gap: 10px;">
-                                    <button type="button" id="btn-selecionar-todos" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+                                    <button type="button" id="btn-selecionar-todos" class="btn-secondary" style="padding: 8px 16px; font-size: 12px; background-color: #d32f2f; color: white; border-color: #d32f2f; cursor: pointer;" onmouseover="this.style.backgroundColor='#b71c1c'" onmouseout="this.style.backgroundColor='#d32f2f'">
                                         Selecionar Todos
                                     </button>
-                                    <button type="button" id="btn-deselecionar-todos" class="btn-secondary" style="padding: 8px 16px; font-size: 12px;">
+                                    <button type="button" id="btn-deselecionar-todos" class="btn-secondary" style="padding: 8px 16px; font-size: 12px; background-color: #d32f2f; color: white; border-color: #d32f2f; cursor: pointer;" onmouseover="this.style.backgroundColor='#b71c1c'" onmouseout="this.style.backgroundColor='#d32f2f'">
                                         Deselecionar Todos
                                     </button>
                                 </div>
@@ -6444,7 +6500,7 @@ function carregarPagina(page) {
                                             <th>Cliente</th>
                                             <th>Parcela</th>
                                             <th>Vencimento</th>
-                                            <th>Valor</th>
+                                            <th style="text-align: right;">Valor</th>
                                         </tr>
                                     </thead>
                                     <tbody id="tabela-cobranca-automatica-body">
@@ -9949,7 +10005,12 @@ function pesquisarTitulosCobrancaAutomatica() {
         .then(r => r.json())
         .then(data => {
             if (data.sucesso) {
-                mostrarMensagemCobrancaAutomatica(`Encontrados ${data.total || 0} título(s).`, 'sucesso');
+                // Não sobrescrever mensagem de sucesso do processamento
+                // Só mostrar mensagem de pesquisa se não houver mensagem de processamento
+                const mensagemAtual = document.getElementById('ca-mensagem');
+                if (!mensagemAtual || mensagemAtual.style.display === 'none' || !mensagemAtual.textContent.includes('Processados')) {
+                    mostrarMensagemCobrancaAutomatica(`Encontrados ${data.total || 0} título(s).`, 'sucesso');
+                }
                 
                 // Armazenar títulos globalmente
                 titulosCobrancaAutomatica = data.titulos || [];
@@ -10074,6 +10135,9 @@ function processarCobrancaAutomatica() {
         }))
     };
     
+    // Mostrar mensagem de processamento
+    mostrarMensagemCobrancaAutomatica('Processando títulos e gerando arquivo de remessa CNAB...', 'info');
+    
     fetch('/SISIPTU/php/cobranca_automatica_api.php', {
         method: 'POST',
         headers: {
@@ -10084,11 +10148,36 @@ function processarCobrancaAutomatica() {
     .then(r => r.json())
     .then(data => {
         if (data.sucesso) {
-            mostrarMensagemCobrancaAutomatica(data.mensagem || `Processados ${titulosIds.length} título(s) com sucesso!`, 'sucesso');
+            let mensagem = data.mensagem || `Processados ${titulosIds.length} título(s) com sucesso!`;
             
-            // Atualizar grid removendo os processados
+            // Adicionar informação sobre arquivo CNAB se foi gerado
+            if (data.remessa_gerada && data.arquivo_cnab) {
+                mensagem += `\n\n📄 Arquivo CNAB de remessa gerado: ${data.arquivo_cnab}`;
+                if (data.caminho_cnab) {
+                    mensagem += `\n📁 Salvo em: ${data.caminho_cnab}`;
+                }
+            }
+            
+            mostrarMensagemCobrancaAutomatica(mensagem, 'sucesso');
+            
+            // Atualizar grid removendo os processados, mas manter a mensagem
             setTimeout(() => {
+                // Salvar a mensagem atual antes de pesquisar
+                const mensagemAtual = document.getElementById('ca-mensagem');
+                const mensagemTexto = mensagemAtual ? (mensagemAtual.innerHTML || mensagemAtual.textContent) : '';
+                const mensagemTipo = mensagemAtual ? mensagemAtual.className.replace('mensagem ', '') : '';
+                
+                // Pesquisar títulos (isso pode limpar a mensagem temporariamente)
                 pesquisarTitulosCobrancaAutomatica();
+                
+                // Restaurar a mensagem após a pesquisa
+                setTimeout(() => {
+                    if (mensagemTexto && mensagemAtual) {
+                        mensagemAtual.innerHTML = mensagemTexto;
+                        mensagemAtual.className = `mensagem ${mensagemTipo}`;
+                        mensagemAtual.style.display = 'block';
+                    }
+                }, 500);
             }, 2000);
         } else {
             mostrarMensagemCobrancaAutomatica(data.mensagem || 'Erro ao processar títulos.', 'erro');
@@ -10109,19 +10198,21 @@ function mostrarMensagemCobrancaAutomatica(mensagem, tipo) {
     const mensagemDiv = document.getElementById('ca-mensagem');
     if (!mensagemDiv) return;
     
-    mensagemDiv.textContent = mensagem;
+    // Se a mensagem contém quebras de linha, usar innerHTML para preservar
+    if (mensagem.includes('\n')) {
+        mensagemDiv.innerHTML = mensagem.replace(/\n/g, '<br>');
+    } else {
+        mensagemDiv.textContent = mensagem;
+    }
+    
     mensagemDiv.className = `mensagem ${tipo}`;
     mensagemDiv.style.display = 'block';
     
     // Scroll para a mensagem
     mensagemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
     
-    // Ocultar após 5 segundos se for sucesso ou info
-    if (tipo === 'sucesso' || tipo === 'info') {
-        setTimeout(() => {
-            mensagemDiv.style.display = 'none';
-        }, 5000);
-    }
+    // Não ocultar automaticamente - manter a mensagem visível
+    // A mensagem só será substituída por uma nova mensagem ou removida manualmente
 }
 
 function inicializarRetornoBancario() {

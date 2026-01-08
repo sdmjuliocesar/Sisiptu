@@ -98,10 +98,13 @@ class CnabItau extends CnabAbstract {
         $linha .= $this->formatarValor(0, 13); // 105-117
         $linha .= $this->formatarValor(0, 13); // 118-130
         $linha .= $this->formatarValor($titulo['multa_calculada'] ?? 0, 13); // 131-143
-        $linha .= $this->formatarAlfanumerico($titulo['cliente_nome'] ?? '', 30); // 144-173
-        $linha .= str_repeat(' ', 40); // 174-213
+        $nomeCliente = $this->obterNomeCliente($titulo);
+        $linha .= $this->formatarAlfanumerico($nomeCliente, 30); // 144-173
+        $enderecoCompleto = $this->montarEnderecoCliente($titulo, 40);
+        $linha .= $this->formatarAlfanumerico($enderecoCompleto, 40); // 174-213
         $linha .= str_repeat(' ', 12); // 214-225
-        $linha .= $this->formatarAlfanumerico($titulo['cep'] ?? '', 8); // 226-233
+        $cep = $this->obterCepCliente($titulo);
+        $linha .= $this->formatarAlfanumerico($cep, 8); // 226-233
         $linha .= str_repeat(' ', 60); // 234-293
         $linha .= str_repeat('0', 6); // 294-299
         $linha .= ' '; // 300

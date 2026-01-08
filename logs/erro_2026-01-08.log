@@ -1,0 +1,416 @@
+[2026-01-08 03:24:59] [ERRO] Iniciando processamento de cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Iniciando processamento de cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "action": "processar",
+        "request_method": "POST",
+        "input_size": 689
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Dados recebidos para processamento | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Dados recebidos para processamento",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "empreendimento_id": 12,
+        "periodo_inicio": "2026-01-01",
+        "periodo_fim": "2026-05-14",
+        "total_titulos": 4,
+        "remissao_boletos": 0
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Empreendimento consultado | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Empreendimento consultado",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "empreendimento_id": "12",
+        "banco_id": 7
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Verificando autoload CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Verificando autoload CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "banco_id": 7,
+        "autoload_path": "C:\\xampp\\htdocs\\SISIPTU\\php\/cnab\/autoload.php",
+        "file_exists": true
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Autoload CNAB carregado com sucesso | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Autoload CNAB carregado com sucesso",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "CnabFactory_exists": true
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Iniciando geração de arquivo CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Iniciando geração de arquivo CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "banco_id": 7
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Dados do banco consultados | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Dados do banco consultados",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "banco_id": "7",
+        "banco_encontrado": true,
+        "caminho_remessa": "C:\\Clube\\"
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Verificando CnabFactory | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Verificando CnabFactory",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "class_exists": true,
+        "codigo_banco": "237"
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Criando instância CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Criando instância CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "codigo_banco": "237",
+        "versao_cnab": 400
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Instância CNAB criada com sucesso | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Instância CNAB criada com sucesso",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "codigo_banco": "237",
+        "nome_banco": "Bradesco"
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Preparando para gerar arquivo CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Preparando para gerar arquivo CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "caminho_remessa": "C:\\Clube\\",
+        "total_titulos": 4,
+        "dados_banco_keys": [
+            "agencia",
+            "dv_agencia",
+            "conta",
+            "dv_conta",
+            "codigo_cedente",
+            "cedente",
+            "carteira",
+            "num_banco"
+        ]
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Arquivo CNAB gerado com sucesso | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Arquivo CNAB gerado com sucesso",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "arquivo": "C:\\Clube\\CB237080126032459.REM",
+        "file_exists": true,
+        "file_size": 2348
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Arquivo CNAB gerado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Arquivo CNAB gerado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "arquivo": "C:\\Clube\\CB237080126032459.REM",
+        "banco_id": "7",
+        "codigo_banco": "237",
+        "total_titulos": 4
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Título processado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Título processado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "titulo_id": "127",
+        "empreendimento_id": "12",
+        "situacao": "ENVIADO",
+        "arquivo_cnab": "CB237080126032459.REM"
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Título processado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Título processado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "titulo_id": "128",
+        "empreendimento_id": "12",
+        "situacao": "ENVIADO",
+        "arquivo_cnab": "CB237080126032459.REM"
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Título processado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Título processado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "titulo_id": "129",
+        "empreendimento_id": "12",
+        "situacao": "ENVIADO",
+        "arquivo_cnab": "CB237080126032459.REM"
+    }
+}
+[2026-01-08 03:24:59] [ERRO] Título processado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:24:59",
+    "mensagem": "Título processado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "titulo_id": "130",
+        "empreendimento_id": "12",
+        "situacao": "ENVIADO",
+        "arquivo_cnab": "CB237080126032459.REM"
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Iniciando processamento de cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Iniciando processamento de cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "action": "processar",
+        "request_method": "POST",
+        "input_size": 275
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Dados recebidos para processamento | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Dados recebidos para processamento",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "empreendimento_id": 12,
+        "periodo_inicio": "2026-01-07",
+        "periodo_fim": "2026-02-28",
+        "total_titulos": 1,
+        "remissao_boletos": 0
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Empreendimento consultado | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Empreendimento consultado",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "empreendimento_id": "12",
+        "banco_id": 7
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Verificando autoload CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Verificando autoload CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "banco_id": 7,
+        "autoload_path": "C:\\xampp\\htdocs\\SISIPTU\\php\/cnab\/autoload.php",
+        "file_exists": true
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Autoload CNAB carregado com sucesso | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Autoload CNAB carregado com sucesso",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "CnabFactory_exists": true
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Iniciando geração de arquivo CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Iniciando geração de arquivo CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "banco_id": 7
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Dados do banco consultados | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Dados do banco consultados",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "banco_id": "7",
+        "banco_encontrado": true,
+        "caminho_remessa": "C:\\Clube\\"
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Verificando CnabFactory | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Verificando CnabFactory",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "class_exists": true,
+        "codigo_banco": "237"
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Criando instância CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Criando instância CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "codigo_banco": "237",
+        "versao_cnab": 400
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Instância CNAB criada com sucesso | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Instância CNAB criada com sucesso",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "codigo_banco": "237",
+        "nome_banco": "Bradesco"
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Preparando para gerar arquivo CNAB | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Preparando para gerar arquivo CNAB",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "caminho_remessa": "C:\\Clube\\",
+        "total_titulos": 1,
+        "dados_banco_keys": [
+            "agencia",
+            "dv_agencia",
+            "conta",
+            "dv_conta",
+            "codigo_cedente",
+            "cedente",
+            "carteira",
+            "num_banco"
+        ]
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Arquivo CNAB gerado com sucesso | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Arquivo CNAB gerado com sucesso",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "arquivo": "C:\\Clube\\CB237080126034656.REM",
+        "file_exists": true,
+        "file_size": 1190
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Arquivo CNAB gerado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Arquivo CNAB gerado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "arquivo": "C:\\Clube\\CB237080126034656.REM",
+        "banco_id": "7",
+        "codigo_banco": "237",
+        "total_titulos": 1
+    }
+}
+[2026-01-08 03:46:56] [ERRO] Título processado na cobrança automática | IP: ::1 | URI: /SISIPTU/php/cobranca_automatica_api.php | {
+    "timestamp": "2026-01-08 03:46:56",
+    "mensagem": "Título processado na cobrança automática",
+    "ip": "::1",
+    "user_agent": "Mozilla\/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit\/537.36 (KHTML, like Gecko) Chrome\/143.0.0.0 Safari\/537.36",
+    "request_uri": "\/SISIPTU\/php\/cobranca_automatica_api.php",
+    "request_method": "POST",
+    "dados": {
+        "titulo_id": "127",
+        "empreendimento_id": "12",
+        "situacao": "ENVIADO",
+        "arquivo_cnab": "CB237080126034656.REM"
+    }
+}

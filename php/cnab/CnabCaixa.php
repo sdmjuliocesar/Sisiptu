@@ -96,10 +96,13 @@ class CnabCaixa extends CnabAbstract {
         $linha .= $this->formatarValor(0, 13); // 116-128
         $linha .= $this->formatarValor(0, 13); // 129-141
         $linha .= $this->formatarValor($titulo['multa_calculada'] ?? 0, 13); // 142-154
-        $linha .= $this->formatarAlfanumerico($titulo['cliente_nome'] ?? '', 30); // 155-184
-        $linha .= str_repeat(' ', 40); // 185-224
+        $nomeCliente = $this->obterNomeCliente($titulo);
+        $linha .= $this->formatarAlfanumerico($nomeCliente, 30); // 155-184
+        $enderecoCompleto = $this->montarEnderecoCliente($titulo, 40);
+        $linha .= $this->formatarAlfanumerico($enderecoCompleto, 40); // 185-224
         $linha .= str_repeat(' ', 12); // 225-236
-        $linha .= $this->formatarAlfanumerico($titulo['cep'] ?? '', 8); // 237-244
+        $cep = $this->obterCepCliente($titulo);
+        $linha .= $this->formatarAlfanumerico($cep, 8); // 237-244
         $linha .= str_repeat(' ', 60); // 245-304
         $linha .= str_repeat('0', 6); // 305-310
         $linha .= ' '; // 311

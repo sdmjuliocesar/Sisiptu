@@ -1,3 +1,0 @@
-CPF/CNPJ,Nome,Tipo Cadastro,CEP,Endereço,Bairro,Cidade,UF,Cód Município,Data Nasc,Profissão,Identidade,Estado Civil,Nacionalidade,Regime Casamento,Email,Site,Tel Comercial,Tel Celular1,Tel Celular2,Tel Residencial,CPF Cônjuge,Nome Cônjuge,Ativo
-71577670663,João Silva,Pessoa Física,12345-678,Rua das Flores 123,Centro,São Paulo,SP,3550308,15/05/1980,Engenheiro,123456789,Solteiro,Brasileiro,,joao@email.com,,,(11)98765-4321,,(11)3456-7890,,,true
-98765432100,Maria Santos,Pessoa Física,54321-876,Av. Principal 456,Jardim América,Rio de Janeiro,RJ,3304557,20/10/1985,Advogada,987654321,Casada,Brasileira,Comunhão Parcial,maria@email.com,,,(21)99876-5432,,(21)2345-6789,11122233344,José Sa
