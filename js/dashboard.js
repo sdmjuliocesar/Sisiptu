@@ -1065,18 +1065,21 @@ function inicializarCadastroClientes() {
 
             this.value = v;
             
-            // Limpar timeout anterior
+            // Limpar timeout anterior (não vamos mais verificar durante a digitação)
             if (timeoutVerificacaoCliente) {
                 clearTimeout(timeoutVerificacaoCliente);
+                timeoutVerificacaoCliente = null;
             }
             
-            // Verificar após 500ms de inatividade (apenas se não estiver validando)
-            if (!validandoCpfCnpj) {
-                timeoutVerificacaoCliente = setTimeout(() => {
-                    if (!validandoCpfCnpj) {
-                        verificarClienteExistente();
-                    }
-                }, 500);
+            // Remover classe de erro durante a digitação
+            this.classList.remove('input-error');
+            this.placeholder = '';
+            
+            // Limpar mensagem de erro durante a digitação
+            const msgDiv = document.getElementById('cli-mensagem');
+            if (msgDiv && msgDiv.textContent.includes('CPF/CNPJ')) {
+                msgDiv.textContent = '';
+                msgDiv.style.display = 'none';
             }
         });
         
@@ -1088,23 +1091,29 @@ function inicializarCadastroClientes() {
                 clearTimeout(timeoutVerificacaoCliente);
             }
             
-            // Validar se tem menos de 11 dígitos
+            // Validar APENAS quando sair do campo
             const cpfCnpj = this.value.trim();
-            if (cpfCnpj) {
-                const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
-                if (docLimpo.length > 0 && docLimpo.length < 11) {
-                    mostrarMensagemCli('CPF/CNPJ deve ter no mínimo 11 dígitos. Digite um CPF (11 dígitos) ou CNPJ (14 dígitos).', 'erro');
-                    // Usar setTimeout para evitar loop com o alert
-                    setTimeout(() => {
-                        if (!validandoCpfCnpj) {
-                            this.focus();
-                        }
-                    }, 100);
-                    return;
-                }
+            if (!cpfCnpj) {
+                // Se o campo estiver vazio, não validar
+                return;
             }
             
-            // Aguardar um pouco antes de verificar para evitar conflito com alert
+            const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
+            
+            // Validar se tem 11 (CPF) ou 14 (CNPJ) dígitos
+            if (docLimpo.length !== 11 && docLimpo.length !== 14) {
+                mostrarMensagemCli('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.', 'erro');
+                this.classList.add('input-error');
+                this.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
+                setTimeout(() => {
+                    if (!validandoCpfCnpj) {
+                        this.focus();
+                    }
+                }, 100);
+                return;
+            }
+            
+            // Se tem a quantidade correta de dígitos, validar CPF/CNPJ
             setTimeout(() => {
                 if (!validandoCpfCnpj) {
                     verificarClienteExistente();
@@ -1150,10 +1159,12 @@ function inicializarCadastroClientes() {
                 }, 200);
                 return;
             }
-        } else if (docLimpo.length > 0 && docLimpo.length < 11) {
+        } else if (docLimpo.length > 0 && (docLimpo.length < 11 || (docLimpo.length > 11 && docLimpo.length < 14))) {
+            // Esta validação já foi feita no blur, mas mantemos como segurança
             validandoCpfCnpj = true; // Prevenir loops
-            alert('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.');
-            // Aguardar o alert fechar completamente antes de focar
+            mostrarMensagemCli('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.', 'erro');
+            inputCpfCnpj.classList.add('input-error');
+            inputCpfCnpj.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
             setTimeout(() => {
                 validandoCpfCnpj = false;
                 if (inputCpfCnpj) {
@@ -1162,8 +1173,8 @@ function inicializarCadastroClientes() {
                 }
             }, 200);
             return;
-        } else {
-            // Ainda não completou a digitação ou está vazio
+        } else if (docLimpo.length === 0) {
+            // Campo vazio, não validar
             return;
         }
         
@@ -2875,12 +2886,26 @@ function inicializarGerarIptu() {
     let validandoContratoGerarIptu = false; // Flag para evitar loops durante validação
     
     if (contratoCodigoInput) {
+        // Validação APENAS quando sair do campo (blur)
         contratoCodigoInput.addEventListener('blur', function() {
             // Não executar se estiver validando (evitar loops)
             if (validandoContratoGerarIptu) return;
             
             if (timeoutValidacaoContrato) {
                 clearTimeout(timeoutValidacaoContrato);
+                timeoutValidacaoContrato = null;
+            }
+            
+            // Validar apenas se o campo tiver valor
+            const contratoCodigo = this.value.trim();
+            if (!contratoCodigo) {
+                // Se o campo estiver vazio, limpar campo de descrição
+                if (contratoDescricaoInput) {
+                    contratoDescricaoInput.value = '';
+                    contratoDescricaoInput.readOnly = false;
+                    contratoDescricaoInput.style.backgroundColor = '';
+                }
+                return;
             }
             
             // Aguardar um pouco antes de verificar para evitar conflito com alert
@@ -2890,18 +2915,23 @@ function inicializarGerarIptu() {
                 }
             }, 150);
         });
+        // Durante a digitação, apenas limpar mensagens de erro (sem validação)
         contratoCodigoInput.addEventListener('input', function() {
+            // Limpar timeout anterior (não vamos mais validar durante a digitação)
             if (timeoutValidacaoContrato) {
                 clearTimeout(timeoutValidacaoContrato);
+                timeoutValidacaoContrato = null;
             }
             
-            // Verificar após 500ms de inatividade (apenas se não estiver validando)
-            if (!validandoContratoGerarIptu) {
-                timeoutValidacaoContrato = setTimeout(() => {
-                    if (!validandoContratoGerarIptu) {
-                        validarContratoGerarIptu();
-                    }
-                }, 500);
+            // Remover classe de erro durante a digitação
+            this.classList.remove('input-error');
+            this.placeholder = '';
+            
+            // Limpar mensagem de erro durante a digitação
+            const msgDiv = document.getElementById('gi-mensagem');
+            if (msgDiv && msgDiv.textContent.includes('Contrato')) {
+                msgDiv.textContent = '';
+                msgDiv.style.display = 'none';
             }
         });
     }
@@ -3361,22 +3391,18 @@ function inicializarCadastroContratos() {
 
             this.value = v;
             
-            // Limpar timeout anterior
+            // Limpar timeout anterior (não vamos mais verificar durante a digitação)
             if (timeoutBuscaCliente) {
                 clearTimeout(timeoutBuscaCliente);
+                timeoutBuscaCliente = null;
             }
             
-            // Verificar após 500ms de inatividade (apenas se não estiver validando)
-            if (!validandoCpfCnpjContrato) {
-                timeoutBuscaCliente = setTimeout(() => {
-                    if (!validandoCpfCnpjContrato) {
-                        validarCpfCnpjContrato();
-                    }
-                }, 500);
-            }
+            // Remover classe de erro durante a digitação
+            this.classList.remove('input-error');
+            this.placeholder = '';
         });
         
-        // Validação no blur (mesma da tela de clientes)
+        // Validação APENAS quando sair do campo (blur)
         cpfCnpjInput.addEventListener('blur', function() {
             // Não executar se estiver validando (evitar loops)
             if (validandoCpfCnpjContrato) return;
@@ -3385,24 +3411,31 @@ function inicializarCadastroContratos() {
                 clearTimeout(timeoutBuscaCliente);
             }
             
-            // Validar se tem menos de 11 dígitos
+            // Validar APENAS quando sair do campo
             const cpfCnpj = this.value.trim();
-            if (cpfCnpj) {
-                const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
-                if (docLimpo.length > 0 && docLimpo.length < 11) {
-                    // Usar alert ao invés de mostrarMensagemContrato para manter consistência
-                    alert('CPF/CNPJ deve ter no mínimo 11 dígitos. Digite um CPF (11 dígitos) ou CNPJ (14 dígitos).');
-                    // Usar setTimeout para evitar loop com o alert
-                    setTimeout(() => {
-                        if (!validandoCpfCnpjContrato) {
-                            this.focus();
-                        }
-                    }, 100);
-                    return;
-                }
+            if (!cpfCnpj) {
+                // Se o campo estiver vazio, limpar campos relacionados
+                if (clienteNomeInput) clienteNomeInput.value = '';
+                if (clienteIdInput) clienteIdInput.value = '';
+                return;
             }
             
-            // Aguardar um pouco antes de verificar para evitar conflito com alert
+            const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
+            
+            // Validar se tem 11 (CPF) ou 14 (CNPJ) dígitos
+            if (docLimpo.length !== 11 && docLimpo.length !== 14) {
+                alert('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.');
+                this.classList.add('input-error');
+                this.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
+                setTimeout(() => {
+                    if (!validandoCpfCnpjContrato) {
+                        this.focus();
+                    }
+                }, 100);
+                return;
+            }
+            
+            // Se tem a quantidade correta de dígitos, validar CPF/CNPJ
             setTimeout(() => {
                 if (!validandoCpfCnpjContrato) {
                     validarCpfCnpjContrato();
@@ -3456,10 +3489,12 @@ function inicializarCadastroContratos() {
                 }, 200);
                 return;
             }
-        } else if (docLimpo.length > 0 && docLimpo.length < 11) {
+        } else if (docLimpo.length > 0 && (docLimpo.length < 11 || (docLimpo.length > 11 && docLimpo.length < 14))) {
+            // Esta validação já foi feita no blur, mas mantemos como segurança
             validandoCpfCnpjContrato = true; // Prevenir loops
             alert('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.');
-            // Aguardar o alert fechar completamente antes de focar
+            cpfCnpjInput.classList.add('input-error');
+            cpfCnpjInput.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
             setTimeout(() => {
                 validandoCpfCnpjContrato = false;
                 if (cpfCnpjInput) {
@@ -3470,8 +3505,8 @@ function inicializarCadastroContratos() {
                 if (clienteIdInput) clienteIdInput.value = '';
             }, 200);
             return;
-        } else {
-            // Ainda não completou a digitação ou está vazio
+        } else if (docLimpo.length === 0) {
+            // Campo vazio, limpar campos relacionados
             if (clienteNomeInput) clienteNomeInput.value = '';
             if (clienteIdInput) clienteIdInput.value = '';
             return;
@@ -9409,6 +9444,33 @@ function inicializarBaixaManual() {
                 // Verificar se está em modo estorno
                 const tipoOperacao = document.querySelector('input[name="bm-tipo-operacao-radio"]:checked')?.value;
                 
+                // VALIDAÇÃO DE DUPLICIDADE: Verificar se o título já foi baixado
+                if (cobranca.pago === 'S' && tipoOperacao === 'baixar') {
+                    // Título já está baixado e usuário está tentando baixar novamente
+                    const mensagemErro = 'Atenção: Este título já foi baixado anteriormente e não pode ser processado de novo.';
+                    
+                    // Mostrar mensagem de erro na frente do campo título
+                    if (msgErroTitulo) {
+                        msgErroTitulo.textContent = mensagemErro;
+                        msgErroTitulo.style.display = 'block';
+                        msgErroTitulo.style.color = '#dc3545';
+                        msgErroTitulo.style.fontWeight = 'bold';
+                    }
+                    
+                    // Mostrar mensagem geral
+                    mostrarMensagemBaixaManual(mensagemErro, 'erro');
+                    
+                    // Limpar formulário e bloquear campo
+                    limparFormularioBaixa();
+                    campoNumTitulo.style.borderColor = '#dc3545';
+                    campoNumTitulo.focus();
+                    
+                    // Sugerir usar modo estorno
+                    document.getElementById('bm-tipo-estornar').checked = true;
+                    
+                    return; // Bloquear o avanço
+                }
+                
                 if (tipoOperacao === 'estornar') {
                     // Modo estorno: preencher todos os campos com os dados da cobrança
                     document.getElementById('bm-valor-parcela').value = cobranca.valor_mensal ? parseFloat(cobranca.valor_mensal).toFixed(2).replace('.', ',') : '0,00';
@@ -10145,8 +10207,25 @@ function processarCobrancaAutomatica() {
         },
         body: JSON.stringify(dados)
     })
-    .then(r => r.json())
+    .then(r => {
+        // Verificar se a resposta é JSON válido
+        if (!r.ok) {
+            throw new Error(`Erro HTTP: ${r.status} ${r.statusText}`);
+        }
+        return r.text().then(text => {
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('Resposta não é JSON válido:', text);
+                throw new Error('Resposta do servidor não é JSON válido. Verifique os logs do servidor.');
+            }
+        });
+    })
     .then(data => {
+        if (!data) {
+            throw new Error('Resposta vazia do servidor');
+        }
+        
         if (data.sucesso) {
             let mensagem = data.mensagem || `Processados ${titulosIds.length} título(s) com sucesso!`;
             
@@ -10156,6 +10235,14 @@ function processarCobrancaAutomatica() {
                 if (data.caminho_cnab) {
                     mensagem += `\n📁 Salvo em: ${data.caminho_cnab}`;
                 }
+            }
+            
+            // Adicionar informações de erros se houver
+            if (data.erros && data.erros.length > 0) {
+                mensagem += `\n\n⚠️ Atenção: ${data.erros.length} erro(s) encontrado(s):`;
+                data.erros.forEach(erro => {
+                    mensagem += `\n   • ${erro}`;
+                });
             }
             
             mostrarMensagemCobrancaAutomatica(mensagem, 'sucesso');
@@ -10180,12 +10267,15 @@ function processarCobrancaAutomatica() {
                 }, 500);
             }, 2000);
         } else {
-            mostrarMensagemCobrancaAutomatica(data.mensagem || 'Erro ao processar títulos.', 'erro');
+            const mensagemErro = data.mensagem || 'Erro ao processar títulos. Verifique os logs do servidor.';
+            console.error('Erro no processamento:', data);
+            mostrarMensagemCobrancaAutomatica(mensagemErro, 'erro');
         }
     })
     .catch(err => {
         console.error('Erro ao processar títulos:', err);
-        mostrarMensagemCobrancaAutomatica('Erro ao processar títulos. Verifique o console para mais detalhes.', 'erro');
+        const mensagemErro = err.message || 'Erro ao processar títulos. Verifique o console e os logs do servidor para mais detalhes.';
+        mostrarMensagemCobrancaAutomatica(mensagemErro, 'erro');
     })
     .finally(() => {
         if (btnProcessar) {

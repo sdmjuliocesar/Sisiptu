@@ -104,7 +104,7 @@
         <h1>📝 Teste de Sistema de Log</h1>
         
         <?php
-        require_once __DIR__ . '/config/logger.php';
+        require_once __DIR__ . '/php/logger.php';
         
         // Verificar diretório de logs
         echo '<div class="info">';

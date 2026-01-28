@@ -3,7 +3,7 @@ session_start();
 
 // Registrar logout no log
 if (isset($_SESSION['usuario'])) {
-    require_once __DIR__ . '/../config/logger.php';
+    require_once __DIR__ . '/logger.php';
     
     $tempoLogado = 0;
     if (isset($_SESSION['login_time'])) {

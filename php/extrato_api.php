@@ -2,7 +2,7 @@
 session_start();
 
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/logger.php';
 
 // Carregar mPDF se disponível
 $mpdfDisponivel = false;

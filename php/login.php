@@ -11,7 +11,7 @@ session_start();
 
 // Incluir arquivos de configuração
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/logger.php';
 
 // Limpar qualquer output capturado antes de definir o header JSON
 ob_clean();

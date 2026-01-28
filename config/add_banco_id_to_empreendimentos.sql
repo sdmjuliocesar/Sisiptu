@@ -34,3 +34,8 @@ CREATE INDEX IF NOT EXISTS idx_empreendimentos_banco_id ON empreendimentos(banco
 
 
 
+
+
+
+
+

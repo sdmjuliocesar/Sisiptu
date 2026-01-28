@@ -42,7 +42,7 @@ register_shutdown_function(function() {
 session_start();
 
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/logger.php';
 
 // Limpar buffer antes de enviar JSON
 ob_clean();
@@ -223,11 +223,18 @@ try {
             
         case 'processar':
             // Log inicial do processamento
-            logError('Iniciando processamento de cobrança automática', [
-                'action' => 'processar',
-                'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'N/A',
-                'input_size' => strlen(file_get_contents('php://input'))
-            ]);
+            try {
+                $inputRaw = file_get_contents('php://input');
+                logError('Iniciando processamento de cobrança automática', [
+                    'action' => 'processar',
+                    'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'N/A',
+                    'input_size' => strlen($inputRaw),
+                    'usuario' => $_SESSION['usuario'] ?? 'N/A',
+                    'usuario_id' => $_SESSION['usuario_id'] ?? 'N/A'
+                ]);
+            } catch (Exception $eLog) {
+                error_log('Erro ao registrar log inicial: ' . $eLog->getMessage());
+            }
             
             // Ler dados do POST JSON
             $input = file_get_contents('php://input');
@@ -235,10 +242,16 @@ try {
             
             if (!$data) {
                 $jsonError = json_last_error_msg();
-                logError('Erro ao decodificar JSON no processamento', [
-                    'json_error' => $jsonError,
-                    'input_preview' => substr($input, 0, 500)
-                ]);
+                try {
+                    logError('Erro ao decodificar JSON no processamento', [
+                        'json_error' => $jsonError,
+                        'json_error_code' => json_last_error(),
+                        'input_preview' => substr($input, 0, 500),
+                        'input_size' => strlen($input)
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log de JSON: ' . $eLog->getMessage());
+                }
                 jsonResponse(false, 'Dados inválidos. Erro JSON: ' . $jsonError);
             }
             
@@ -248,22 +261,39 @@ try {
             $remissao_boletos = isset($data['remissao_boletos']) ? (int)$data['remissao_boletos'] : 0;
             $titulos = isset($data['titulos']) && is_array($data['titulos']) ? $data['titulos'] : [];
             
-            logError('Dados recebidos para processamento', [
-                'empreendimento_id' => $empreendimento_id,
-                'periodo_inicio' => $periodo_inicio,
-                'periodo_fim' => $periodo_fim,
-                'total_titulos' => count($titulos),
-                'remissao_boletos' => $remissao_boletos
-            ]);
+            try {
+                logError('Dados recebidos para processamento', [
+                    'empreendimento_id' => $empreendimento_id,
+                    'periodo_inicio' => $periodo_inicio,
+                    'periodo_fim' => $periodo_fim,
+                    'total_titulos' => count($titulos),
+                    'remissao_boletos' => $remissao_boletos,
+                    'titulos_ids' => array_map(function($t) { return $t['id'] ?? 'N/A'; }, $titulos)
+                ]);
+            } catch (Exception $eLog) {
+                error_log('Erro ao registrar log de dados: ' . $eLog->getMessage());
+            }
             
             // Validações
             if (!$empreendimento_id) {
-                logError('Validação falhou: empreendimento_id ausente');
+                try {
+                    logError('Validação falhou: empreendimento_id ausente', [
+                        'dados_recebidos' => ['empreendimento_id' => $empreendimento_id]
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log de validação: ' . $eLog->getMessage());
+                }
                 jsonResponse(false, 'Empreendimento é obrigatório.');
             }
             
             if (empty($titulos)) {
-                logError('Validação falhou: nenhum título selecionado');
+                try {
+                    logError('Validação falhou: nenhum título selecionado', [
+                        'total_titulos' => count($titulos)
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log de validação: ' . $eLog->getMessage());
+                }
                 jsonResponse(false, 'Nenhum título selecionado para processar.');
             }
             
@@ -336,12 +366,30 @@ try {
             }
             
             // Iniciar transação
+            try {
+                logError('Iniciando transação de banco de dados', [
+                    'empreendimento_id' => $empreendimento_id,
+                    'banco_id' => $banco_id,
+                    'total_titulos' => count($titulos)
+                ]);
+            } catch (Exception $eLog) {
+                error_log('Erro ao registrar log de transação: ' . $eLog->getMessage());
+            }
+            
             $pdo->beginTransaction();
             
             try {
                 $processados = 0;
                 $erros = [];
                 $arquivoCnab = null;
+                
+                try {
+                    logError('Transação iniciada com sucesso', [
+                        'empreendimento_id' => $empreendimento_id
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log: ' . $eLog->getMessage());
+                }
                 
                 // Sempre gerar arquivo CNAB quando houver banco vinculado
                 if ($banco_id) {
@@ -376,15 +424,50 @@ try {
                         }
                         
                         // Preparar dados do banco para CNAB
+                        // Extrair agência e dígito verificador (suporta formatos: "1234-5", "12345", "1234")
+                        $agenciaCompleta = $banco['agencia'] ?? '';
+                        $agenciaParts = explode('-', $agenciaCompleta);
+                        $agencia = preg_replace('/[^0-9]/', '', $agenciaParts[0]);
+                        $dvAgencia = '';
+                        if (count($agenciaParts) > 1) {
+                            // Se tem hífen, o dígito está após o hífen
+                            $dvAgencia = preg_replace('/[^0-9]/', '', $agenciaParts[1]);
+                        } else {
+                            // Se não tem hífen, pegar último caractere se for numérico
+                            $agenciaLimpa = preg_replace('/[^0-9]/', '', $agenciaCompleta);
+                            if (strlen($agenciaLimpa) > 4) {
+                                $dvAgencia = substr($agenciaLimpa, -1);
+                                $agencia = substr($agenciaLimpa, 0, -1);
+                            }
+                        }
+                        
+                        // Extrair conta e dígito verificador (suporta formatos: "1234567-8", "12345678", "1234567")
+                        $contaCompleta = $banco['conta'] ?? '';
+                        $contaParts = explode('-', $contaCompleta);
+                        $conta = preg_replace('/[^0-9]/', '', $contaParts[0]);
+                        $dvConta = '';
+                        if (count($contaParts) > 1) {
+                            // Se tem hífen, o dígito está após o hífen
+                            $dvConta = preg_replace('/[^0-9]/', '', $contaParts[1]);
+                        } else {
+                            // Se não tem hífen, pegar último caractere se for numérico
+                            $contaLimpa = preg_replace('/[^0-9]/', '', $contaCompleta);
+                            if (strlen($contaLimpa) > 7) {
+                                $dvConta = substr($contaLimpa, -1);
+                                $conta = substr($contaLimpa, 0, -1);
+                            }
+                        }
+                        
                         $dadosBanco = [
-                            'agencia' => $banco['agencia'] ?? '',
-                            'dv_agencia' => substr($banco['agencia'] ?? '', -1),
-                            'conta' => $banco['conta'] ?? '',
-                            'dv_conta' => substr($banco['conta'] ?? '', -1),
+                            'agencia' => $agencia,
+                            'dv_agencia' => $dvAgencia,
+                            'conta' => $conta,
+                            'dv_conta' => $dvConta,
                             'codigo_cedente' => $banco['codigo_cedente'] ?? '',
                             'cedente' => $banco['cedente'] ?? '',
                             'carteira' => $banco['carteira'] ?? '',
-                            'num_banco' => $banco['num_banco'] ?? $banco['id']
+                            'num_banco' => $banco['num_banco'] ?? $banco['id'],
+                            'multa_mes' => $banco['multa_mes'] ?? 0
                         ];
                         
                         // Determinar código do banco
@@ -570,38 +653,114 @@ try {
                 }
                 
                 // Processar cada título
-                foreach ($titulos as $titulo) {
+                try {
+                    logError('Iniciando processamento de títulos individuais', [
+                        'total_titulos' => count($titulos),
+                        'arquivo_cnab_gerado' => $arquivoCnab ? basename($arquivoCnab) : null
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log: ' . $eLog->getMessage());
+                }
+                
+                foreach ($titulos as $index => $titulo) {
                     $titulo_id = isset($titulo['id']) ? (int)$titulo['id'] : null;
                     
                     if (!$titulo_id) {
-                        $erros[] = 'ID do título inválido';
+                        $erroMsg = 'ID do título inválido';
+                        $erros[] = $erroMsg;
+                        try {
+                            logError('Título com ID inválido ignorado', [
+                                'titulo_index' => $index,
+                                'titulo_data' => $titulo
+                            ]);
+                        } catch (Exception $eLog) {
+                            error_log('Erro ao registrar log: ' . $eLog->getMessage());
+                        }
                         continue;
                     }
                     
-                    // Marcar título como processado (sempre marcar como ENVIADO se CNAB foi gerado)
-                    $situacao = ($arquivoCnab) ? 'ENVIADO' : 'PROCESSADO';
-                    $stmtUpdate = $pdo->prepare("
-                        UPDATE cobranca 
-                        SET dataenvio = CURRENT_DATE,
-                            situacao = :situacao
-                        WHERE id = :id
-                    ");
-                    $stmtUpdate->bindParam(':id', $titulo_id, PDO::PARAM_INT);
-                    $stmtUpdate->bindValue(':situacao', $situacao);
-                    $stmtUpdate->execute();
-                    
-                    logError('Título processado na cobrança automática', [
-                        'titulo_id' => $titulo_id,
-                        'empreendimento_id' => $empreendimento_id,
-                        'situacao' => $situacao,
-                        'arquivo_cnab' => $arquivoCnab ? basename($arquivoCnab) : null
+                    try {
+                        // Marcar título como processado (sempre marcar como ENVIADO se CNAB foi gerado)
+                        $situacao = ($arquivoCnab) ? 'ENVIADO' : 'PROCESSADO';
+                        
+                        try {
+                            logError('Atualizando título na base de dados', [
+                                'titulo_id' => $titulo_id,
+                                'situacao' => $situacao
+                            ]);
+                        } catch (Exception $eLog) {
+                            error_log('Erro ao registrar log: ' . $eLog->getMessage());
+                        }
+                        
+                        $stmtUpdate = $pdo->prepare("
+                            UPDATE cobranca 
+                            SET dataenvio = CURRENT_DATE,
+                                situacao = :situacao
+                            WHERE id = :id
+                        ");
+                        $stmtUpdate->bindParam(':id', $titulo_id, PDO::PARAM_INT);
+                        $stmtUpdate->bindValue(':situacao', $situacao);
+                        $stmtUpdate->execute();
+                        
+                        try {
+                            logError('Título processado na cobrança automática', [
+                                'titulo_id' => $titulo_id,
+                                'empreendimento_id' => $empreendimento_id,
+                                'situacao' => $situacao,
+                                'arquivo_cnab' => $arquivoCnab ? basename($arquivoCnab) : null
+                            ]);
+                        } catch (Exception $eLog) {
+                            error_log('Erro ao registrar log: ' . $eLog->getMessage());
+                        }
+                        
+                        $processados++;
+                    } catch (Exception $eTitulo) {
+                        $erroMsg = "Erro ao processar título ID {$titulo_id}: " . $eTitulo->getMessage();
+                        $erros[] = $erroMsg;
+                        try {
+                            logError('Erro ao processar título individual', [
+                                'titulo_id' => $titulo_id,
+                                'error' => $eTitulo->getMessage(),
+                                'trace' => $eTitulo->getTraceAsString()
+                            ], $eTitulo);
+                        } catch (Exception $eLog) {
+                            error_log('Erro ao registrar log de erro de título: ' . $eLog->getMessage());
+                        }
+                    }
+                }
+                
+                try {
+                    logError('Processamento de títulos individuais concluído', [
+                        'processados' => $processados,
+                        'total' => count($titulos),
+                        'erros_count' => count($erros)
                     ]);
-                    
-                    $processados++;
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log: ' . $eLog->getMessage());
                 }
                 
                 // Commit da transação
+                try {
+                    logError('Finalizando processamento - preparando commit', [
+                        'processados' => $processados,
+                        'total' => count($titulos),
+                        'erros_count' => count($erros),
+                        'arquivo_cnab' => $arquivoCnab ? basename($arquivoCnab) : null
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log antes do commit: ' . $eLog->getMessage());
+                }
+                
                 $pdo->commit();
+                
+                try {
+                    logError('Transação commitada com sucesso', [
+                        'processados' => $processados,
+                        'total' => count($titulos)
+                    ]);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log após commit: ' . $eLog->getMessage());
+                }
                 
                 $mensagem = "✅ Processados {$processados} título(s) com sucesso.";
                 
@@ -643,27 +802,64 @@ try {
                 jsonResponse(true, $mensagem, $responseData);
                 
             } catch (Exception $e) {
-                $pdo->rollBack();
+                try {
+                    $pdo->rollBack();
+                } catch (Exception $eRollback) {
+                    error_log('Erro ao fazer rollback: ' . $eRollback->getMessage());
+                }
+                
                 // Limpar qualquer output antes de enviar erro
                 ob_clean();
-                logError('Erro ao processar cobrança automática', [
-                    'action' => $action,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'empreendimento_id' => $empreendimento_id ?? null
-                ]);
-                jsonResponse(false, 'Erro ao processar títulos: ' . $e->getMessage());
+                
+                $mensagemErro = 'Erro ao processar títulos: ' . $e->getMessage();
+                
+                try {
+                    logError('Erro ao processar cobrança automática', [
+                        'action' => $action,
+                        'error' => $e->getMessage(),
+                        'error_code' => $e->getCode(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString(),
+                        'empreendimento_id' => $empreendimento_id ?? null,
+                        'banco_id' => $banco_id ?? null,
+                        'total_titulos' => count($titulos ?? [])
+                    ], $e);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log de exceção: ' . $eLog->getMessage());
+                    error_log('Erro original: ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+                }
+                
+                jsonResponse(false, $mensagemErro);
             } catch (Error $e) {
-                $pdo->rollBack();
+                try {
+                    $pdo->rollBack();
+                } catch (Exception $eRollback) {
+                    error_log('Erro ao fazer rollback: ' . $eRollback->getMessage());
+                }
+                
                 // Limpar qualquer output antes de enviar erro
                 ob_clean();
-                logError('Erro fatal ao processar cobrança automática', [
-                    'action' => $action,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString(),
-                    'empreendimento_id' => $empreendimento_id ?? null
-                ]);
-                jsonResponse(false, 'Erro fatal ao processar títulos: ' . $e->getMessage());
+                
+                $mensagemErro = 'Erro fatal ao processar títulos: ' . $e->getMessage();
+                
+                try {
+                    logError('Erro fatal ao processar cobrança automática', [
+                        'action' => $action,
+                        'error' => $e->getMessage(),
+                        'error_code' => $e->getCode(),
+                        'file' => $e->getFile(),
+                        'line' => $e->getLine(),
+                        'trace' => $e->getTraceAsString(),
+                        'empreendimento_id' => $empreendimento_id ?? null,
+                        'banco_id' => $banco_id ?? null
+                    ], $e);
+                } catch (Exception $eLog) {
+                    error_log('Erro ao registrar log de erro fatal: ' . $eLog->getMessage());
+                    error_log('Erro fatal original: ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+                }
+                
+                jsonResponse(false, $mensagemErro);
             }
             break;
             

@@ -2,7 +2,7 @@
 session_start();
 
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -129,6 +129,15 @@ try {
                 LEFT JOIN bancos b ON b.id = e.banco_id
                 WHERE 1=1";
             
+            // Aplicar filtro de status de pagamento
+            // Por padrão, excluir parcelas pagas (exceto se o filtro for 'pagos')
+            if ($filtro_titulo !== 'pagos') {
+                $sql .= " AND (c.pago IS NULL OR c.pago = '' OR c.pago = 'N' OR c.pago = 'n')";
+            } else {
+                // Se o filtro for 'pagos', mostrar apenas parcelas pagas
+                $sql .= " AND (c.pago = 'S' OR c.pago = 's')";
+            }
+            
             // Aplicar filtros opcionais
             if ($empreendimento_id) {
                 $sql .= " AND c.empreendimento_id = :empreendimento_id";
@@ -150,18 +159,14 @@ try {
                 $sql .= " AND c.ano_referencia = :ano_referencia";
             }
             
-            // Aplicar filtro de título
+            // Aplicar filtro de título (data de vencimento)
             $hoje = date('Y-m-d');
-            if ($filtro_titulo === 'pagos') {
-                $sql .= " AND (c.pago = 'S' OR c.pago = 's')";
-            } elseif ($filtro_titulo === 'vencidos') {
-                $sql .= " AND (c.pago IS NULL OR c.pago = '' OR c.pago = 'N' OR c.pago = 'n')";
+            if ($filtro_titulo === 'vencidos') {
                 $sql .= " AND c.datavencimento < :hoje";
             } elseif ($filtro_titulo === 'a-vencer') {
-                $sql .= " AND (c.pago IS NULL OR c.pago = '' OR c.pago = 'N' OR c.pago = 'n')";
                 $sql .= " AND c.datavencimento >= :hoje";
             }
-            // 'todos' não adiciona filtro
+            // 'todos' e 'pagos' não adicionam filtro de data
             
             // Aplicar ordenação
             switch($ordem) {

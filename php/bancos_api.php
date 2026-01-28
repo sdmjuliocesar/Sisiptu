@@ -9,7 +9,7 @@ error_reporting(E_ALL);
 session_start();
 
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/logger.php';
 
 // Limpar buffer antes de enviar JSON
 ob_clean();

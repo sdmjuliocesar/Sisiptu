@@ -4,7 +4,7 @@
  * Registra eventos importantes do sistema
  */
 
-// Definir diretório de logs
+// Definir diretório de logs (ajustado para estar na pasta php)
 define('LOG_DIR', __DIR__ . '/../logs/');
 
 /**
@@ -211,4 +211,7 @@ function logError($mensagem, $dados = [], $exception = null) {
     }
 }
 ?>
+
+
+
 

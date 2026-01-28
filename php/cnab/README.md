@@ -174,3 +174,7 @@ Todas as operações são registradas em `logs/erro_*.log` usando a função `lo
 - Cada banco pode ter especificidades no formato. Consulte a documentação oficial do banco para ajustes.
 - Os arquivos gerados seguem o padrão: `CB{codigo_banco}{data}{hora}.REM`
 
+
+
+
+

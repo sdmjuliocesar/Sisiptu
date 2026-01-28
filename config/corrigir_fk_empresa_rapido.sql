@@ -29,3 +29,6 @@ SELECT
     (SELECT COUNT(*) FROM clientes WHERE tipo_cadastro = 'Empresa') AS empresas_disponiveis,
     (SELECT COUNT(*) FROM empreendimentos WHERE empresa_id IS NOT NULL) AS empreendimentos_com_empresa;
 
+
+
+

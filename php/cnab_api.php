@@ -9,7 +9,7 @@ error_reporting(E_ALL);
 session_start();
 
 require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/logger.php';
 require_once __DIR__ . '/cnab/autoload.php';
 
 ob_clean();
@@ -93,7 +93,8 @@ try {
                 'codigo_cedente' => $banco['codigo_cedente'] ?? '',
                 'cedente' => $banco['cedente'] ?? '',
                 'carteira' => $banco['carteira'] ?? '',
-                'num_banco' => $banco['num_banco'] ?? $banco['id']
+                'num_banco' => $banco['num_banco'] ?? $banco['id'],
+                'multa_mes' => $banco['multa_mes'] ?? 0
             ];
             
             // Determinar código do banco

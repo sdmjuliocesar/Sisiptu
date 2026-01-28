@@ -5,7 +5,7 @@
  */
 
 require_once __DIR__ . '/php/database.php';
-require_once __DIR__ . '/config/logger.php';
+require_once __DIR__ . '/php/logger.php';
 
 echo "<h2>🔍 Diagnóstico de Geração de PDF</h2>";
 echo "<hr>";
