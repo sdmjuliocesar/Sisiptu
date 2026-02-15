@@ -1,8 +1,8 @@
 <?php
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -51,24 +51,6 @@ try {
             }
 
             jsonResponse(true, 'Usuário carregado com sucesso.', ['usuario' => $usuario]);
-            break;
-
-        case 'verificar-usuario':
-            $usuario = trim($_GET['usuario'] ?? '');
-            if ($usuario === '') {
-                jsonResponse(false, 'Nome de usuário não informado.');
-            }
-
-            $stmt = $pdo->prepare("SELECT id FROM usuarios WHERE usuario = :usuario");
-            $stmt->bindParam(':usuario', $usuario);
-            $stmt->execute();
-            $existe = $stmt->fetch();
-
-            if ($existe) {
-                jsonResponse(false, 'Já existe um usuário com este nome de usuário.');
-            }
-
-            jsonResponse(true, 'Nome de usuário disponível.');
             break;
 
         case 'create':

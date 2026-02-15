@@ -1,29 +1,14 @@
 <?php
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
-
-// Carregar mPDF se disponível
-$mpdfDisponivel = false;
-if (file_exists(__DIR__ . '/../Vendor/autoload.php')) {
-    require_once __DIR__ . '/../Vendor/autoload.php';
-    if (class_exists('\\Mpdf\\Mpdf')) {
-        $mpdfDisponivel = true;
-    }
-}
-
-if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
-    header('Content-Type: application/json; charset=utf-8');
-    echo json_encode([
-        'sucesso' => false,
-        'mensagem' => 'Acesso não autorizado. Faça login novamente.'
-    ]);
-    exit;
-}
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
+require_once __DIR__ . '/../config/extrato_token.php';
 
 function jsonResponse($sucesso, $mensagem, $extra = []) {
-    header('Content-Type: application/json; charset=utf-8');
+    if (!headers_sent()) {
+        header('Content-Type: application/json; charset=utf-8');
+    }
     echo json_encode(array_merge([
         'sucesso' => $sucesso,
         'mensagem' => $mensagem,
@@ -31,350 +16,156 @@ function jsonResponse($sucesso, $mensagem, $extra = []) {
     exit;
 }
 
-function calcularJurosMultas(&$cobrancas, $dataCalculo) {
-    if (empty($cobrancas)) return;
-    
-    $dataCalculoObj = new DateTime($dataCalculo);
-    $dataCalculoObj->setTime(0, 0, 0);
-    
-    foreach ($cobrancas as &$c) {
-        // Só calcular se não estiver pago
-        if (isset($c['pago']) && ($c['pago'] === 'S' || $c['pago'] === 's')) {
-            $c['juros_calculado'] = 0;
-            $c['multa_calculada'] = 0;
-            continue;
-        }
-        
-        $dataVenc = $c['datavencimento'] ?? null;
-        if (!$dataVenc) {
-            $c['juros_calculado'] = 0;
-            $c['multa_calculada'] = 0;
-            continue;
-        }
-        
-        $dataVencimento = new DateTime($dataVenc);
-        $dataVencimento->setTime(0, 0, 0);
-        
-        // Só calcular se houver atraso
-        if ($dataVencimento >= $dataCalculoObj) {
-            $c['juros_calculado'] = 0;
-            $c['multa_calculada'] = 0;
-            continue;
-        }
-        
-        // Calcular dias de atraso
-        $diff = $dataCalculoObj->diff($dataVencimento);
-        $diffDays = (int)$diff->format('%a');
-        
-        if ($diffDays <= 0) {
-            $c['juros_calculado'] = 0;
-            $c['multa_calculada'] = 0;
-            continue;
-        }
-        
-        $valorMensal = (float)($c['valor_mensal'] ?? 0);
-        $multaMes = (float)($c['multa_mes'] ?? 0);
-        $jurosMes = (float)($c['juros_mes'] ?? 0);
-        
-        // Calcular multa (percentual sobre o valor)
-        $multa = 0;
-        if ($multaMes > 0 && $valorMensal > 0) {
-            $multa = $valorMensal * ($multaMes / 100);
-        }
-        
-        // Calcular juros (percentual mensal proporcional aos dias)
-        $juros = 0;
-        if ($jurosMes > 0 && $valorMensal > 0) {
-            $mesesAtraso = $diffDays / 30;
-            $juros = $valorMensal * ($jurosMes / 100) * $mesesAtraso;
-        }
-        
-        $c['juros_calculado'] = $juros;
-        $c['multa_calculada'] = $multa;
-    }
-}
-
-function gerarPDFDoHTML($html, $contrato) {
-    global $mpdfDisponivel;
-    
-    if (!$mpdfDisponivel) {
-        return null;
-    }
-    
-    try {
-        // Configurar diretório temporário do mPDF
-        $tempDir = __DIR__ . '/../Vendor/mpdf/mpdf/tmp';
-        if (!is_dir($tempDir)) {
-            @mkdir($tempDir, 0777, true);
-        }
-        
-        $mpdf = new \Mpdf\Mpdf([
-            'mode' => 'utf-8',
-            'format' => 'A4',
-            'orientation' => 'P',
-            'margin_left' => 15,
-            'margin_right' => 15,
-            'margin_top' => 16,
-            'margin_bottom' => 16,
-            'margin_header' => 9,
-            'margin_footer' => 9,
-            'tempDir' => $tempDir
-        ]);
-        
-        $mpdf->WriteHTML($html);
-        return $mpdf->Output('', 'S'); // Retorna como string
-    } catch (Exception $e) {
-        logError('Erro ao gerar PDF', [
-            'contrato' => $contrato,
-            'error' => $e->getMessage(),
-            'trace' => $e->getTraceAsString()
-        ]);
-        return null;
-    }
-}
-
-function gerarHTMLExtrato($cobrancas, $empreendimentoNome, $cliente, $contrato, $dataCalculo) {
-    $hoje = new DateTime();
-    $dataExtrato = $hoje->format('d/m/Y');
-    $dataCalculoFormatada = $dataCalculo ? date('d/m/Y', strtotime($dataCalculo)) : '';
-    
-    // Calcular totais
-    $totalValor = 0;
-    $totalJuros = 0;
-    $totalMulta = 0;
-    $totalPago = 0;
-    
-    foreach ($cobrancas as $c) {
-        $totalValor += (float)($c['valor_mensal'] ?? 0);
-        $jurosValor = $c['juros_calculado'] ?? (float)($c['juros'] ?? 0);
-        $multaValor = $c['multa_calculada'] ?? (float)($c['multas'] ?? 0);
-        $totalJuros += $jurosValor;
-        $totalMulta += $multaValor;
-        if (isset($c['pago']) && ($c['pago'] === 'S' || $c['pago'] === 's')) {
-            $totalPago += (float)($c['valor_pago'] ?? $c['valor_mensal'] ?? 0);
-        }
-    }
-    
-    $totalGeral = $totalValor + $totalJuros + $totalMulta;
-    
-    // Gerar tabela
-    $tabelaHTML = '';
-    $dataReferencia = $dataCalculo ? new DateTime($dataCalculo) : new DateTime();
-    $dataReferencia->setTime(0, 0, 0);
-    
-    foreach ($cobrancas as $c) {
-        $vencimento = $c['datavencimento'] ?? $c['data_vencimento'] ?? '';
-        $vencimentoFormatado = $vencimento ? date('d/m/Y', strtotime($vencimento)) : '-';
-        $valor = (float)($c['valor_mensal'] ?? 0);
-        $jurosValor = $c['juros_calculado'] ?? (float)($c['juros'] ?? 0);
-        $multaValor = $c['multa_calculada'] ?? (float)($c['multas'] ?? 0);
-        $valorTotal = $valor + $jurosValor + $multaValor;
-        
-        // Verificar se está em atraso
-        $statusAtraso = '';
-        $pagoStatus = isset($c['pago']) && ($c['pago'] === 'S' || $c['pago'] === 's');
-        if (!$pagoStatus && $vencimento) {
-            $dataVencimento = new DateTime($vencimento);
-            $dataVencimento->setTime(0, 0, 0);
-            if ($dataVencimento < $dataReferencia) {
-                $statusAtraso = 'Em atraso';
-            }
-        }
-        
-        $titulo = $c['titulo'] ?? $c['id'] ?? '-';
-        $parcela = $c['parcelamento'] ?? '-';
-        
-        $tabelaHTML .= "
-            <tr>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center;\">{$titulo}</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center;\">{$parcela}</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center;\">{$vencimentoFormatado}</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">R$ " . number_format($valor, 2, ',', '.') . "</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">R$ " . number_format($jurosValor, 2, ',', '.') . "</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">R$ " . number_format($multaValor, 2, ',', '.') . "</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: right;\">R$ " . number_format($valorTotal, 2, ',', '.') . "</td>
-                <td style=\"border: 1px solid #ddd; padding: 8px; text-align: center; " . ($statusAtraso ? "color: #d32f2f; font-weight: bold;" : "") . "\">{$statusAtraso}</td>
-            </tr>
-        ";
-    }
-    
-    $clienteDisplay = $cliente ?: 'Não informado';
-    $dataCalculoHTML = $dataCalculoFormatada ? "
-                <div class=\"info-row\">
-                    <span class=\"info-label\">Data para Cálculo:</span>
-                    <span>{$dataCalculoFormatada}</span>
-                </div>
-    " : '';
-    
-    return "
-        <!DOCTYPE html>
-        <html lang=\"pt-BR\">
-        <head>
-            <meta charset=\"UTF-8\">
-            <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\">
-            <title>Extrato de IPTU - {$contrato}</title>
-            <style>
-                @media print {
-                    @page {
-                        margin: 1cm;
-                    }
-                    body {
-                        margin: 0;
-                        padding: 0;
-                    }
-                }
-                body {
-                    font-family: Arial, sans-serif;
-                    padding: 20px;
-                    color: #333;
-                }
-                .header {
-                    text-align: center;
-                    border-bottom: 2px solid #2d8659;
-                    padding-bottom: 20px;
-                    margin-bottom: 20px;
-                }
-                .header h1 {
-                    color: #2d8659;
-                    margin: 0;
-                }
-                .info-section {
-                    margin-bottom: 20px;
-                }
-                .info-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin-bottom: 10px;
-                }
-                .info-label {
-                    font-weight: bold;
-                }
-                table {
-                    width: 100%;
-                    border-collapse: collapse;
-                    margin: 20px 0;
-                }
-                th {
-                    background-color: #2d8659;
-                    color: white;
-                    padding: 10px;
-                    text-align: center;
-                    border: 1px solid #ddd;
-                }
-                td {
-                    border: 1px solid #ddd;
-                    padding: 8px;
-                }
-                .total-section {
-                    margin-top: 20px;
-                    padding: 15px;
-                    background-color: #f5f5f5;
-                    border: 2px solid #2d8659;
-                }
-                .total-row {
-                    display: flex;
-                    justify-content: space-between;
-                    margin: 5px 0;
-                    font-size: 14px;
-                }
-                .total-final {
-                    font-size: 18px;
-                    font-weight: bold;
-                    color: #2d8659;
-                    margin-top: 10px;
-                    padding-top: 10px;
-                    border-top: 2px solid #2d8659;
-                }
-            </style>
-        </head>
-        <body>
-            <div class=\"header\">
-                <h1>EXTRATO DE IPTU</h1>
-                <p>Data de Emissão: {$dataExtrato}</p>
-            </div>
-            
-            <div class=\"info-section\">
-                <div class=\"info-row\">
-                    <span class=\"info-label\">Cliente:</span>
-                    <span>{$clienteDisplay}</span>
-                </div>
-                <div class=\"info-row\">
-                    <span class=\"info-label\">Contrato:</span>
-                    <span>{$contrato}</span>
-                </div>
-                <div class=\"info-row\">
-                    <span class=\"info-label\">Empreendimento:</span>
-                    <span>{$empreendimentoNome}</span>
-                </div>
-                {$dataCalculoHTML}
-            </div>
-            
-            <table>
-                <thead>
-                    <tr>
-                        <th>Título</th>
-                        <th>Parcela</th>
-                        <th>Vencimento</th>
-                        <th>Valor</th>
-                        <th>Juros</th>
-                        <th>Multa</th>
-                        <th>Total</th>
-                        <th>Status</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {$tabelaHTML}
-                </tbody>
-            </table>
-            
-            <div class=\"total-section\">
-                <div class=\"total-row\">
-                    <span>Total de Parcelas:</span>
-                    <span>R$ " . number_format($totalValor, 2, ',', '.') . "</span>
-                </div>
-                <div class=\"total-row\">
-                    <span>Total de Juros:</span>
-                    <span>R$ " . number_format($totalJuros, 2, ',', '.') . "</span>
-                </div>
-                <div class=\"total-row\">
-                    <span>Total de Multas:</span>
-                    <span>R$ " . number_format($totalMulta, 2, ',', '.') . "</span>
-                </div>
-                <div class=\"total-row total-final\">
-                    <span>TOTAL GERAL:</span>
-                    <span>R$ " . number_format($totalGeral, 2, ',', '.') . "</span>
-                </div>
-                <div class=\"total-row\">
-                    <span>Total Pago:</span>
-                    <span>R$ " . number_format($totalPago, 2, ',', '.') . "</span>
-                </div>
-                <div class=\"total-row total-final\">
-                    <span>SALDO DEVEDOR:</span>
-                    <span>R$ " . number_format($totalGeral - $totalPago, 2, ',', '.') . "</span>
-                </div>
-            </div>
-        </body>
-        </html>
-    ";
-}
-
 $action = isset($_REQUEST['action']) ? $_REQUEST['action'] : '';
+$acaoPublica = ($action === 'publico-pdf');
+
+function base64url_encode_str(string $data): string {
+    return rtrim(strtr(base64_encode($data), '+/', '-_'), '=');
+}
+
+function base64url_decode_str(string $data): string {
+    $b64 = strtr($data, '-_', '+/');
+    $pad = strlen($b64) % 4;
+    if ($pad) $b64 .= str_repeat('=', 4 - $pad);
+    $decoded = base64_decode($b64, true);
+    return $decoded === false ? '' : $decoded;
+}
+
+function gerarTokenExtrato(array $payload, int $ttlSeconds): string {
+    $agora = time();
+    $payload['iat'] = $agora;
+    $payload['exp'] = $agora + max(60, $ttlSeconds);
+    $json = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $p = base64url_encode_str($json ?: '{}');
+    $sig = base64url_encode_str(hash_hmac('sha256', $p, EXTRATO_TOKEN_SECRET, true));
+    return $p . '.' . $sig;
+}
+
+function validarTokenExtrato(string $token): array {
+    $partes = explode('.', $token);
+    if (count($partes) !== 2) return ['valido' => false, 'erro' => 'Token inválido.'];
+    [$p, $sig] = $partes;
+    if ($p === '' || $sig === '') return ['valido' => false, 'erro' => 'Token inválido.'];
+    $sigEsperada = base64url_encode_str(hash_hmac('sha256', $p, EXTRATO_TOKEN_SECRET, true));
+    if (!hash_equals($sigEsperada, $sig)) return ['valido' => false, 'erro' => 'Token inválido.'];
+
+    $json = base64url_decode_str($p);
+    $payload = json_decode($json, true);
+    if (!is_array($payload)) return ['valido' => false, 'erro' => 'Token inválido.'];
+    $exp = isset($payload['exp']) ? (int)$payload['exp'] : 0;
+    if ($exp <= 0 || time() > $exp) return ['valido' => false, 'erro' => 'Link expirado. Gere um novo extrato e reenvie.'];
+
+    return ['valido' => true, 'payload' => $payload];
+}
+
+function publicError(string $mensagem, int $code = 403): void {
+    if (!headers_sent()) {
+        http_response_code($code);
+        header('Content-Type: text/plain; charset=utf-8');
+    }
+    echo $mensagem;
+    exit;
+}
+
+// Se não for ação pública, exige sessão
+if (!$acaoPublica && (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true)) {
+    jsonResponse(false, 'Acesso não autorizado. Faça login novamente.');
+}
 
 try {
     $pdo = getConnection();
+
+    // Gera um link público assinado (para WhatsApp) - exige login
+    if ($action === 'gerar-link-publico') {
+        $empreendimento_id = isset($_REQUEST['empreendimento_id']) && $_REQUEST['empreendimento_id'] !== '' ? (int)$_REQUEST['empreendimento_id'] : null;
+        $modulo_id = isset($_REQUEST['modulo_id']) && $_REQUEST['modulo_id'] !== '' ? (int)$_REQUEST['modulo_id'] : null;
+        $contrato = isset($_REQUEST['contrato']) ? trim($_REQUEST['contrato']) : null;
+        $cliente = isset($_REQUEST['cliente']) ? trim($_REQUEST['cliente']) : null;
+        $data_calculo = isset($_REQUEST['data_calculo']) ? trim($_REQUEST['data_calculo']) : null;
+        $filtro_titulo = isset($_REQUEST['filtro_titulo']) ? trim($_REQUEST['filtro_titulo']) : 'todos';
+        $ordem = isset($_REQUEST['ordem']) ? trim($_REQUEST['ordem']) : 'vencimento';
+
+        if (!$empreendimento_id || !$modulo_id || !$contrato) {
+            jsonResponse(false, 'Empreendimento, Módulo e Contrato são obrigatórios.');
+        }
+
+        $payload = [
+            'empreendimento_id' => (int)$empreendimento_id,
+            'modulo_id' => (int)$modulo_id,
+            'contrato' => (string)$contrato,
+            'cliente' => (string)($cliente ?? ''),
+            'data_calculo' => (string)($data_calculo ?? ''),
+            'filtro_titulo' => (string)($filtro_titulo ?? 'todos'),
+            'ordem' => (string)($ordem ?? 'vencimento'),
+        ];
+        $token = gerarTokenExtrato($payload, defined('EXTRATO_TOKEN_TTL_SECONDS') ? (int)EXTRATO_TOKEN_TTL_SECONDS : 86400);
+
+        $scheme = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') ? 'https' : 'http';
+        $host = $_SERVER['HTTP_HOST'] ?? 'localhost';
+        $scriptDir = rtrim(str_replace('\\', '/', dirname($_SERVER['SCRIPT_NAME'] ?? '')), '/');
+        $url = $scheme . '://' . $host . $scriptDir . '/extrato_api.php?action=publico-pdf&token=' . rawurlencode($token);
+
+        jsonResponse(true, 'Link gerado com sucesso.', ['url' => $url]);
+    }
+
+    // Envia extrato por email (exige login)
+    if ($action === 'enviar-email') {
+        $emailDestino = isset($_REQUEST['email']) ? trim((string)$_REQUEST['email']) : '';
+        if (!$emailDestino || !filter_var($emailDestino, FILTER_VALIDATE_EMAIL)) {
+            jsonResponse(false, 'Email inválido.');
+        }
+
+        registrarLog('INFO', 'Tentativa de envio de extrato por email', [
+            'email' => $emailDestino,
+            'empreendimento_id' => $_REQUEST['empreendimento_id'] ?? null,
+            'modulo_id' => $_REQUEST['modulo_id'] ?? null,
+            'contrato' => $_REQUEST['contrato'] ?? null,
+        ]);
+        // Continua o fluxo normal para carregar cobranças e gerar o PDF (mais abaixo),
+        // e então envia com mail(). A parte de envio fica logo após a geração do PDF.
+    }
     
     // Coletar parâmetros
-    $empreendimento_id = isset($_REQUEST['empreendimento_id']) && $_REQUEST['empreendimento_id'] !== '' ? (int)$_REQUEST['empreendimento_id'] : null;
-    $modulo_id = isset($_REQUEST['modulo_id']) && $_REQUEST['modulo_id'] !== '' ? (int)$_REQUEST['modulo_id'] : null;
-    $contrato = isset($_REQUEST['contrato']) ? trim($_REQUEST['contrato']) : null;
-    $cliente = isset($_REQUEST['cliente']) ? trim($_REQUEST['cliente']) : null;
-    $data_calculo = isset($_REQUEST['data_calculo']) ? trim($_REQUEST['data_calculo']) : null;
-    $filtro_titulo = isset($_REQUEST['filtro_titulo']) ? trim($_REQUEST['filtro_titulo']) : 'todos';
-    $ordem = isset($_REQUEST['ordem']) ? trim($_REQUEST['ordem']) : 'vencimento';
+    if ($acaoPublica) {
+        $token = isset($_REQUEST['token']) ? (string)$_REQUEST['token'] : '';
+        if (!$token) {
+            publicError('Token não informado.');
+        }
+        $v = validarTokenExtrato($token);
+        if (!$v['valido']) {
+            publicError($v['erro'] ?? 'Token inválido.');
+        }
+        $p = $v['payload'];
+        $empreendimento_id = isset($p['empreendimento_id']) ? (int)$p['empreendimento_id'] : null;
+        $modulo_id = isset($p['modulo_id']) ? (int)$p['modulo_id'] : null;
+        $contrato = isset($p['contrato']) ? trim((string)$p['contrato']) : null;
+        $cliente = isset($p['cliente']) ? trim((string)$p['cliente']) : null;
+        $data_calculo = isset($p['data_calculo']) ? trim((string)$p['data_calculo']) : null;
+        $filtro_titulo = isset($p['filtro_titulo']) ? trim((string)$p['filtro_titulo']) : 'todos';
+        $ordem = isset($p['ordem']) ? trim((string)$p['ordem']) : 'vencimento';
+    } else {
+        $empreendimento_id = isset($_REQUEST['empreendimento_id']) && $_REQUEST['empreendimento_id'] !== '' ? (int)$_REQUEST['empreendimento_id'] : null;
+        $modulo_id = isset($_REQUEST['modulo_id']) && $_REQUEST['modulo_id'] !== '' ? (int)$_REQUEST['modulo_id'] : null;
+        $contrato = isset($_REQUEST['contrato']) ? trim($_REQUEST['contrato']) : null;
+        $cliente = isset($_REQUEST['cliente']) ? trim($_REQUEST['cliente']) : null;
+        $data_calculo = isset($_REQUEST['data_calculo']) ? trim($_REQUEST['data_calculo']) : null;
+        $filtro_titulo = isset($_REQUEST['filtro_titulo']) ? trim($_REQUEST['filtro_titulo']) : 'todos';
+        $ordem = isset($_REQUEST['ordem']) ? trim($_REQUEST['ordem']) : 'vencimento';
+    }
     
     if (!$empreendimento_id || !$modulo_id || !$contrato) {
+        if ($acaoPublica) {
+            publicError('Parâmetros inválidos no token.');
+        }
         jsonResponse(false, 'Empreendimento, Módulo e Contrato são obrigatórios.');
     }
+
+    // Data referência (para cálculo de juros/multa no extrato)
+    $dataReferencia = $data_calculo ? DateTime::createFromFormat('Y-m-d', $data_calculo) : new DateTime('today');
+    if (!$dataReferencia) {
+        $dataReferencia = new DateTime('today');
+    }
+    $dataReferencia->setTime(0, 0, 0);
     
     // Verificar se a coluna ano_referencia existe
     $colunaAnoRefExiste = false;
@@ -499,102 +290,254 @@ try {
     $stmtEmp->execute();
     $empreendimento = $stmtEmp->fetch(PDO::FETCH_ASSOC);
     $empreendimentoNome = $empreendimento ? $empreendimento['nome'] : '';
-    
-    // Calcular juros e multas se houver data de cálculo
-    if ($data_calculo) {
-        calcularJurosMultas($cobrancas, $data_calculo);
-    }
-    
-    // Processar ações
-    switch ($action) {
-        case 'gerar-pdf':
-            // Gerar HTML do extrato para impressão
-            $htmlExtrato = gerarHTMLExtrato($cobrancas, $empreendimentoNome, $cliente, $contrato, $data_calculo);
-            
-            // Retornar HTML para impressão
-            header('Content-Type: text/html; charset=utf-8');
-            echo $htmlExtrato;
-            exit;
-            
-        case 'enviar-email':
-            $emailDestino = isset($_POST['email']) ? trim($_POST['email']) : '';
-            
-            if (empty($emailDestino) || !filter_var($emailDestino, FILTER_VALIDATE_EMAIL)) {
+
+    // Helpers
+    $fmtMoney = static function ($v) {
+        $n = is_numeric($v) ? (float)$v : 0.0;
+        return number_format($n, 2, ',', '.');
+    };
+    $fmtDateBR = static function ($ymd) {
+        if (!$ymd) return '';
+        $dt = DateTime::createFromFormat('Y-m-d', substr((string)$ymd, 0, 10));
+        return $dt ? $dt->format('d/m/Y') : (string)$ymd;
+    };
+    $calcJurosMulta = static function (array $c, DateTime $ref) {
+        $valor = is_numeric($c['valor_mensal'] ?? null) ? (float)$c['valor_mensal'] : 0.0;
+        $jurosMes = is_numeric($c['juros_mes'] ?? null) ? (float)$c['juros_mes'] : 0.0;   // %
+        $multaMes = is_numeric($c['multa_mes'] ?? null) ? (float)$c['multa_mes'] : 0.0;   // %
+
+        $pago = strtoupper((string)($c['pago'] ?? '')) === 'S';
+        $venc = DateTime::createFromFormat('Y-m-d', substr((string)($c['datavencimento'] ?? ''), 0, 10));
+        if (!$venc) {
+            return ['juros' => 0.0, 'multa' => 0.0, 'dias' => 0, 'em_atraso' => false, 'pago' => $pago];
+        }
+        $venc->setTime(0, 0, 0);
+
+        if ($pago) {
+            return ['juros' => 0.0, 'multa' => 0.0, 'dias' => 0, 'em_atraso' => false, 'pago' => true];
+        }
+
+        $dias = (int)$venc->diff($ref)->format('%r%a');
+        $emAtraso = ($dias > 0);
+        if (!$emAtraso) {
+            return ['juros' => 0.0, 'multa' => 0.0, 'dias' => 0, 'em_atraso' => false, 'pago' => false];
+        }
+
+        // Juros diário aproximado a partir do juros mensal (% / 30)
+        $jurosDia = ($jurosMes > 0) ? (($valor * ($jurosMes / 100.0)) / 30.0) : 0.0;
+        $juros = $jurosDia * $dias;
+        $multa = ($multaMes > 0) ? ($valor * ($multaMes / 100.0)) : 0.0;
+
+        return ['juros' => $juros, 'multa' => $multa, 'dias' => $dias, 'em_atraso' => true, 'pago' => false];
+    };
+
+    if ($action === 'gerar-pdf' || $action === 'publico-pdf' || $action === 'enviar-email') {
+        // Gerar PDF do extrato
+        $autoload = __DIR__ . '/../Vendor/autoload.php';
+        if (!file_exists($autoload)) {
+            $autoload = __DIR__ . '/../vendor/autoload.php';
+        }
+        if (!file_exists($autoload)) {
+            if ($acaoPublica) publicError('Dependências do PDF não encontradas.', 500);
+            jsonResponse(false, 'Dependências do PDF não encontradas (autoload do Composer).');
+        }
+        require_once $autoload;
+
+        $dataExtrato = (new DateTime())->format('d/m/Y');
+        $dataCalcBR = $data_calculo ? $fmtDateBR($data_calculo) : '';
+
+        $rowsHtml = '';
+        $totalValor = 0.0;
+        $totalJuros = 0.0;
+        $totalMulta = 0.0;
+        $totalGeral = 0.0;
+
+        foreach ($cobrancas as $c) {
+            $valor = is_numeric($c['valor_mensal'] ?? null) ? (float)$c['valor_mensal'] : 0.0;
+            $calc = $calcJurosMulta($c, $dataReferencia);
+            $juros = $calc['juros'];
+            $multa = $calc['multa'];
+            $total = $valor + $juros + $multa;
+
+            $totalValor += $valor;
+            $totalJuros += $juros;
+            $totalMulta += $multa;
+            $totalGeral += $total;
+
+            $titulo = $colunaTituloExiste ? (string)($c['titulo'] ?? '') : (string)($c['id'] ?? '');
+            $parcela = (string)($c['parcelamento'] ?? '');
+            $venc = $fmtDateBR($c['datavencimento'] ?? '');
+            $status = $calc['pago'] ? 'PAGO' : ($calc['em_atraso'] ? ('VENCIDO (' . $calc['dias'] . 'd)') : 'EM ABERTO');
+
+            $rowsHtml .= '<tr>'
+                . '<td style="text-align:left;">' . htmlspecialchars($titulo) . '</td>'
+                . '<td style="text-align:center;">' . htmlspecialchars($parcela) . '</td>'
+                . '<td style="text-align:center;">' . htmlspecialchars($venc) . '</td>'
+                . '<td style="text-align:right;">' . $fmtMoney($valor) . '</td>'
+                . '<td style="text-align:right;">' . $fmtMoney($juros) . '</td>'
+                . '<td style="text-align:right;">' . $fmtMoney($multa) . '</td>'
+                . '<td style="text-align:right;"><strong>' . $fmtMoney($total) . '</strong></td>'
+                . '<td style="text-align:center;">' . htmlspecialchars($status) . '</td>'
+                . '</tr>';
+        }
+
+        if ($rowsHtml === '') {
+            $rowsHtml = '<tr><td colspan="8" style="text-align:center;padding:12px;">Nenhum título encontrado.</td></tr>';
+        }
+
+        $html = '
+<!doctype html>
+<html lang="pt-br">
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font-family: Arial, sans-serif; font-size: 10.5pt; color: #111; }
+    .top { margin-bottom: 10px; }
+    .title { font-size: 14pt; font-weight: bold; margin: 0 0 4px 0; }
+    .meta { font-size: 10pt; color: #333; margin: 0; }
+    table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+    th, td { border: 1px solid #bbb; padding: 6px; }
+    th { background: #f2f2f2; font-weight: bold; }
+    .totais { margin-top: 10px; width: 100%; }
+    .totais td { border: none; padding: 2px 0; }
+    .totais .lbl { text-align: right; padding-right: 8px; color: #333; }
+    .totais .val { text-align: right; width: 120px; }
+  </style>
+</head>
+<body>
+  <div class="top">
+    <p class="title">Extrato de Cobranças (IPTU)</p>
+    <p class="meta"><strong>Empreendimento:</strong> ' . htmlspecialchars($empreendimentoNome) . '</p>
+    <p class="meta"><strong>Contrato:</strong> ' . htmlspecialchars($contrato) . ' &nbsp;&nbsp; <strong>Cliente:</strong> ' . htmlspecialchars($cliente ?: '') . '</p>
+    <p class="meta"><strong>Data do extrato:</strong> ' . $dataExtrato . ($dataCalcBR ? (' &nbsp;&nbsp; <strong>Data de cálculo:</strong> ' . htmlspecialchars($dataCalcBR)) : '') . '</p>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th style="width:14%;">Título</th>
+        <th style="width:9%;">Parcela</th>
+        <th style="width:12%;">Vencimento</th>
+        <th style="width:12%;">Valor</th>
+        <th style="width:12%;">Juros</th>
+        <th style="width:12%;">Multa</th>
+        <th style="width:13%;">Total</th>
+        <th style="width:16%;">Situação</th>
+      </tr>
+    </thead>
+    <tbody>
+      ' . $rowsHtml . '
+    </tbody>
+  </table>
+
+  <table class="totais">
+    <tr><td class="lbl"><strong>Total Valor:</strong></td><td class="val">' . $fmtMoney($totalValor) . '</td></tr>
+    <tr><td class="lbl"><strong>Total Juros:</strong></td><td class="val">' . $fmtMoney($totalJuros) . '</td></tr>
+    <tr><td class="lbl"><strong>Total Multa:</strong></td><td class="val">' . $fmtMoney($totalMulta) . '</td></tr>
+    <tr><td class="lbl"><strong>Total Geral:</strong></td><td class="val"><strong>' . $fmtMoney($totalGeral) . '</strong></td></tr>
+  </table>
+</body>
+</html>';
+
+        $filename = 'extrato_iptu_contrato_' . preg_replace('/\D+/', '', (string)$contrato) . '_' . date('Ymd_His') . '.pdf';
+
+        $mpdf = new \Mpdf\Mpdf([
+            'mode' => 'utf-8',
+            'format' => 'A4',
+            'margin_left' => 10,
+            'margin_right' => 10,
+            'margin_top' => 10,
+            'margin_bottom' => 10,
+        ]);
+        $mpdf->WriteHTML($html);
+
+        $pdfBytes = $mpdf->Output($filename, \Mpdf\Output\Destination::STRING_RETURN);
+
+        if ($action === 'enviar-email') {
+            $emailDestino = isset($_REQUEST['email']) ? trim((string)$_REQUEST['email']) : '';
+            if (!$emailDestino || !filter_var($emailDestino, FILTER_VALIDATE_EMAIL)) {
                 jsonResponse(false, 'Email inválido.');
             }
-            
-            // Gerar HTML do extrato
-            $htmlExtrato = gerarHTMLExtrato($cobrancas, $empreendimentoNome, $cliente, $contrato, $data_calculo);
-            
-            // Converter HTML para PDF
-            $pdfContent = gerarPDFDoHTML($htmlExtrato, $contrato);
-            
-            if (!$pdfContent) {
-                // Se não conseguiu gerar PDF, tentar enviar HTML como fallback
-                logError('Erro ao gerar PDF, enviando HTML como fallback', [
-                    'contrato' => $contrato,
-                    'email' => $emailDestino
-                ]);
-                jsonResponse(false, 'Erro ao gerar PDF. Verifique se o mPDF está instalado corretamente.');
+
+            $assunto = 'Extrato de IPTU - Contrato ' . (string)$contrato;
+            $mensagemTexto = "Olá!\n\nSegue em anexo o extrato de IPTU do contrato {$contrato}.\n\nAtenciosamente,\nSISIPTU";
+
+            // From (fallback). Em XAMPP/Windows, se não estiver configurado pode falhar.
+            $from = ini_get('sendmail_from');
+            if (!$from || !filter_var($from, FILTER_VALIDATE_EMAIL)) {
+                $from = 'no-reply@sisiptu.local';
             }
-            
-            // Enviar email
-            $assunto = "Extrato de IPTU - Contrato: {$contrato}";
-            
-            // Corpo do email em HTML
-            $corpoEmail = "
-            <html>
-            <body>
-                <p>Segue em anexo o extrato de IPTU do contrato <strong>{$contrato}</strong>.</p>
-                <p><strong>Cliente:</strong> " . ($cliente ?: 'Não informado') . "</p>
-                <p><strong>Empreendimento:</strong> {$empreendimentoNome}</p>
-                " . ($data_calculo ? "<p><strong>Data para Cálculo:</strong> " . date('d/m/Y', strtotime($data_calculo)) . "</p>" : "") . "
-                <p><strong>Instruções:</strong> Baixe o arquivo PDF anexo antes de abrir.</p>
-                <hr>
-                <p style='font-size: 12px; color: #666;'>Este é um email automático, por favor não responda.</p>
-            </body>
-            </html>
-            ";
-            
-            // Preparar email multipart com anexo PDF
-            $boundary = md5(time());
-            $headers = "MIME-Version: 1.0\r\n";
-            $headers .= "From: Sistema SISIPTU <noreply@sisiptu.com>\r\n";
-            $headers .= "Content-Type: multipart/mixed; boundary=\"{$boundary}\"\r\n";
-            
-            $corpoEmailCompleto = "--{$boundary}\r\n";
-            $corpoEmailCompleto .= "Content-Type: text/html; charset=UTF-8\r\n";
-            $corpoEmailCompleto .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
-            $corpoEmailCompleto .= $corpoEmail . "\r\n";
-            
-            // Anexar extrato PDF
-            $nomeArquivo = "extrato_iptu_{$contrato}_" . date('YmdHis') . ".pdf";
-            $corpoEmailCompleto .= "--{$boundary}\r\n";
-            $corpoEmailCompleto .= "Content-Type: application/pdf\r\n";
-            $corpoEmailCompleto .= "Content-Disposition: attachment; filename=\"{$nomeArquivo}\"\r\n";
-            $corpoEmailCompleto .= "Content-Transfer-Encoding: base64\r\n\r\n";
-            $corpoEmailCompleto .= chunk_split(base64_encode($pdfContent)) . "\r\n";
-            $corpoEmailCompleto .= "--{$boundary}--\r\n";
-            
-            // Enviar email
-            $enviado = mail($emailDestino, $assunto, $corpoEmailCompleto, $headers);
-            
-            if ($enviado) {
-                jsonResponse(true, "Extrato enviado por email com sucesso para: {$emailDestino}");
-            } else {
-                logError('Erro ao enviar email', [
+
+            $boundary = '=_SISIPTU_' . bin2hex(random_bytes(12));
+            $headers = [];
+            $headers[] = 'MIME-Version: 1.0';
+            $headers[] = 'From: ' . $from;
+            $headers[] = 'Content-Type: multipart/mixed; boundary="' . $boundary . '"';
+
+            $body = '';
+            $body .= "--{$boundary}\r\n";
+            $body .= "Content-Type: text/plain; charset=\"utf-8\"\r\n";
+            $body .= "Content-Transfer-Encoding: 8bit\r\n\r\n";
+            $body .= $mensagemTexto . "\r\n\r\n";
+
+            $body .= "--{$boundary}\r\n";
+            $body .= "Content-Type: application/pdf; name=\"{$filename}\"\r\n";
+            $body .= "Content-Transfer-Encoding: base64\r\n";
+            $body .= "Content-Disposition: attachment; filename=\"{$filename}\"\r\n\r\n";
+            $body .= chunk_split(base64_encode($pdfBytes)) . "\r\n";
+            $body .= "--{$boundary}--\r\n";
+
+            $ok = false;
+            $ultimoErroAntes = error_get_last();
+            try {
+                $ok = @mail($emailDestino, $assunto, $body, implode("\r\n", $headers));
+            } catch (Throwable $e) {
+                logError('Exceção ao chamar mail() no envio de extrato', [
                     'email' => $emailDestino,
-                    'contrato' => $contrato
-                ]);
-                jsonResponse(false, 'Erro ao enviar email. Verifique a configuração do servidor de email.');
+                    'from' => $from,
+                    'sendmail_from' => ini_get('sendmail_from'),
+                    'sendmail_path' => ini_get('sendmail_path'),
+                    'SMTP' => ini_get('SMTP'),
+                    'smtp_port' => ini_get('smtp_port'),
+                ], $e);
+                jsonResponse(false, 'Erro ao enviar email (exceção).');
             }
-            break;
-            
-        default:
-            if ($action) {
-                jsonResponse(false, 'Ação não reconhecida.');
+            $ultimoErroDepois = error_get_last();
+
+            if (!$ok) {
+                logError('Falha ao enviar extrato por email', [
+                    'email' => $emailDestino,
+                    'from' => $from,
+                    'sendmail_from' => ini_get('sendmail_from'),
+                    'sendmail_path' => ini_get('sendmail_path'),
+                    'SMTP' => ini_get('SMTP'),
+                    'smtp_port' => ini_get('smtp_port'),
+                    'php_last_error_before' => $ultimoErroAntes,
+                    'php_last_error_after' => $ultimoErroDepois,
+                ], null);
+                jsonResponse(false, 'Falha ao enviar email. Verifique a configuração de email do servidor.');
             }
-            break;
+
+            registrarLog('INFO', 'Extrato enviado por email com sucesso', [
+                'email' => $emailDestino,
+                'from' => $from,
+                'contrato' => $contrato,
+            ]);
+            jsonResponse(true, 'Extrato enviado por email com sucesso.');
+        }
+
+        if (!headers_sent()) {
+            header('Content-Type: application/pdf');
+            header('Content-Disposition: inline; filename="' . $filename . '"');
+            header('Cache-Control: private, max-age=0, must-revalidate');
+            header('Pragma: public');
+        }
+        echo $pdfBytes;
+        exit;
+    }
+    
+    if ($action) {
+        jsonResponse(false, 'Ação não reconhecida.');
     }
     
 } catch (PDOException $e) {

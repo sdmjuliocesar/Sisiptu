@@ -476,16 +476,12 @@ function inicializarCadastroEmpreendimentos() {
     // Carregar bancos no dropdown
     carregarBancosSelectEmpreendimentos();
     
-    // Carregar empresas no dropdown
-    carregarEmpresasSelectEmpreendimentos();
-    
     carregarEmpreendimentos();
 
     form.addEventListener('submit', function (e) {
         e.preventDefault();
 
         const id = document.getElementById('emp-id').value;
-        const empresa_id = document.getElementById('emp-empresa').value || '';
         const nome = document.getElementById('emp-nome').value.trim();
         const banco_id = document.getElementById('emp-banco').value || '';
         const descricao = document.getElementById('emp-descricao').value.trim();
@@ -502,7 +498,6 @@ function inicializarCadastroEmpreendimentos() {
         }
 
         const formData = new FormData();
-        formData.append('empresa_id', empresa_id);
         formData.append('nome', nome);
         formData.append('banco_id', banco_id);
         formData.append('descricao', descricao);
@@ -547,7 +542,6 @@ function inicializarCadastroEmpreendimentos() {
             form.reset();
             document.getElementById('emp-ativo').checked = true;
             document.getElementById('emp-id').value = '';
-            document.getElementById('emp-empresa').value = '';
             mostrarMensagemEmp('', null);
         });
     }
@@ -640,7 +634,6 @@ function editarEmpreendimento(id) {
 
             const e = data.empreendimento;
             document.getElementById('emp-id').value = e.id;
-            document.getElementById('emp-empresa').value = e.empresa_id || '';
             document.getElementById('emp-nome').value = e.nome || '';
             document.getElementById('emp-banco').value = e.banco_id || '';
             document.getElementById('emp-descricao').value = e.descricao || '';
@@ -656,59 +649,6 @@ function editarEmpreendimento(id) {
         .catch(err => {
             console.error(err);
             mostrarMensagemEmp('Erro ao carregar empreendimento.', 'erro');
-        });
-}
-
-function carregarEmpresasSelectEmpreendimentos() {
-    const select = document.getElementById('emp-empresa');
-    if (!select) {
-        console.warn('Elemento emp-empresa não encontrado. Tentando novamente...');
-        // Tentar novamente após um pequeno delay
-        setTimeout(carregarEmpresasSelectEmpreendimentos, 100);
-        return;
-    }
-
-    // Limpar e adicionar opção padrão
-    select.innerHTML = '<option value="">Selecione a empresa...</option>';
-
-    // Buscar empresas usando a API de empresas
-    fetch('/SISIPTU/php/empresas_api.php?action=list')
-        .then(r => {
-            if (!r.ok) {
-                throw new Error(`HTTP error! status: ${r.status}`);
-            }
-            const contentType = r.headers.get('content-type');
-            if (!contentType || !contentType.includes('application/json')) {
-                return r.text().then(text => {
-                    console.error('Resposta não é JSON:', text);
-                    throw new Error('Resposta não é JSON');
-                });
-            }
-            return r.json();
-        })
-        .then(data => {
-            if (!data || !data.sucesso) {
-                console.warn('Erro ao carregar empresas:', data?.mensagem || 'Resposta inválida');
-                return;
-            }
-
-            // Filtrar apenas empresas ativas
-            const empresas = (data.empresas || []).filter(e => e.ativo !== false);
-            
-            if (empresas.length === 0) {
-                console.info('Nenhuma empresa cadastrada.');
-                return;
-            }
-            
-            empresas.forEach(empresa => {
-                const option = document.createElement('option');
-                option.value = empresa.id;
-                option.textContent = empresa.nome || `Empresa ${empresa.id}`;
-                select.appendChild(option);
-            });
-        })
-        .catch(err => {
-            console.error('Erro ao carregar empresas:', err);
         });
 }
 
@@ -1065,21 +1005,18 @@ function inicializarCadastroClientes() {
 
             this.value = v;
             
-            // Limpar timeout anterior (não vamos mais verificar durante a digitação)
+            // Limpar timeout anterior
             if (timeoutVerificacaoCliente) {
                 clearTimeout(timeoutVerificacaoCliente);
-                timeoutVerificacaoCliente = null;
             }
             
-            // Remover classe de erro durante a digitação
-            this.classList.remove('input-error');
-            this.placeholder = '';
-            
-            // Limpar mensagem de erro durante a digitação
-            const msgDiv = document.getElementById('cli-mensagem');
-            if (msgDiv && msgDiv.textContent.includes('CPF/CNPJ')) {
-                msgDiv.textContent = '';
-                msgDiv.style.display = 'none';
+            // Verificar após 500ms de inatividade (apenas se não estiver validando)
+            if (!validandoCpfCnpj) {
+                timeoutVerificacaoCliente = setTimeout(() => {
+                    if (!validandoCpfCnpj) {
+                        verificarClienteExistente();
+                    }
+                }, 500);
             }
         });
         
@@ -1091,29 +1028,23 @@ function inicializarCadastroClientes() {
                 clearTimeout(timeoutVerificacaoCliente);
             }
             
-            // Validar APENAS quando sair do campo
+            // Validar se tem menos de 11 dígitos
             const cpfCnpj = this.value.trim();
-            if (!cpfCnpj) {
-                // Se o campo estiver vazio, não validar
-                return;
+            if (cpfCnpj) {
+                const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
+                if (docLimpo.length > 0 && docLimpo.length < 11) {
+                    mostrarMensagemCli('CPF/CNPJ deve ter no mínimo 11 dígitos. Digite um CPF (11 dígitos) ou CNPJ (14 dígitos).', 'erro');
+                    // Usar setTimeout para evitar loop com o alert
+                    setTimeout(() => {
+                        if (!validandoCpfCnpj) {
+                            this.focus();
+                        }
+                    }, 100);
+                    return;
+                }
             }
             
-            const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
-            
-            // Validar se tem 11 (CPF) ou 14 (CNPJ) dígitos
-            if (docLimpo.length !== 11 && docLimpo.length !== 14) {
-                mostrarMensagemCli('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.', 'erro');
-                this.classList.add('input-error');
-                this.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
-                setTimeout(() => {
-                    if (!validandoCpfCnpj) {
-                        this.focus();
-                    }
-                }, 100);
-                return;
-            }
-            
-            // Se tem a quantidade correta de dígitos, validar CPF/CNPJ
+            // Aguardar um pouco antes de verificar para evitar conflito com alert
             setTimeout(() => {
                 if (!validandoCpfCnpj) {
                     verificarClienteExistente();
@@ -1159,12 +1090,10 @@ function inicializarCadastroClientes() {
                 }, 200);
                 return;
             }
-        } else if (docLimpo.length > 0 && (docLimpo.length < 11 || (docLimpo.length > 11 && docLimpo.length < 14))) {
-            // Esta validação já foi feita no blur, mas mantemos como segurança
+        } else if (docLimpo.length > 0 && docLimpo.length < 11) {
             validandoCpfCnpj = true; // Prevenir loops
-            mostrarMensagemCli('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.', 'erro');
-            inputCpfCnpj.classList.add('input-error');
-            inputCpfCnpj.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
+            alert('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.');
+            // Aguardar o alert fechar completamente antes de focar
             setTimeout(() => {
                 validandoCpfCnpj = false;
                 if (inputCpfCnpj) {
@@ -1173,8 +1102,8 @@ function inicializarCadastroClientes() {
                 }
             }, 200);
             return;
-        } else if (docLimpo.length === 0) {
-            // Campo vazio, não validar
+        } else {
+            // Ainda não completou a digitação ou está vazio
             return;
         }
         
@@ -1384,353 +1313,6 @@ function inicializarCadastroClientes() {
     });
 }
 
-// ---------- CRUD Empresas ----------
-
-function inicializarCadastroEmpresas() {
-    const form = document.getElementById('form-empresa');
-    const btnNovo = document.getElementById('btn-novo-empresa');
-    const btnBuscar = document.getElementById('btn-buscar-empresa');
-    const btnLimparBusca = document.getElementById('btn-limpar-busca-empresa');
-    const tabelaBody = document.querySelector('#tabela-empresas tbody');
-
-    if (!form || !tabelaBody) return;
-
-    // Máscara / formatação de CNPJ
-    const inputCnpj = document.getElementById('empresa-cnpj');
-    let timeoutVerificacaoCnpj = null;
-    let validandoCnpj = false;
-    window.empresaEditandoId = null;
-    
-    const hiddenId = document.getElementById('empresa-id');
-    if (hiddenId) {
-        window.empresaEditandoId = hiddenId.value || null;
-    }
-    
-    if (inputCnpj) {
-        inputCnpj.addEventListener('input', function () {
-            let v = this.value.replace(/[^0-9]/g, '');
-            // Limitar a 14 dígitos (CNPJ)
-            if (v.length > 14) v = v.slice(0, 14);
-
-            // Aplicar máscara CNPJ: 00.000.000/0000-00
-            if (v.length > 12) {
-                v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{0,2}).*/, '$1.$2.$3/$4-$5');
-            } else if (v.length > 8) {
-                v = v.replace(/(\d{2})(\d{3})(\d{3})(\d{0,4})/, '$1.$2.$3/$4');
-            } else if (v.length > 5) {
-                v = v.replace(/(\d{2})(\d{3})(\d{0,3})/, '$1.$2.$3');
-            } else if (v.length > 2) {
-                v = v.replace(/(\d{2})(\d{0,3})/, '$1.$2');
-            }
-
-            this.value = v;
-            
-            if (timeoutVerificacaoCnpj) {
-                clearTimeout(timeoutVerificacaoCnpj);
-            }
-            
-            if (!validandoCnpj && v.replace(/[^0-9]/g, '').length === 14) {
-                timeoutVerificacaoCnpj = setTimeout(() => {
-                    validarCnpjEmpresa(v);
-                }, 500);
-            }
-        });
-    }
-    
-    carregarEmpresas();
-
-    form.addEventListener('submit', function (e) {
-        e.preventDefault();
-
-        const id = document.getElementById('empresa-id').value;
-        const cnpj = document.getElementById('empresa-cnpj').value.replace(/[^0-9]/g, '');
-        const razao_social = document.getElementById('empresa-razao-social').value.trim();
-        const nome_fantasia = document.getElementById('empresa-nome-fantasia').value.trim();
-        const cep = document.getElementById('empresa-cep').value.trim();
-        const endereco = document.getElementById('empresa-endereco').value.trim();
-        const bairro = document.getElementById('empresa-bairro').value.trim();
-        const cidade = document.getElementById('empresa-cidade').value.trim();
-        const uf = document.getElementById('empresa-uf').value.trim().toUpperCase();
-        const cod_municipio = document.getElementById('empresa-cod-municipio').value.trim();
-        const email = document.getElementById('empresa-email').value.trim();
-        const site = document.getElementById('empresa-site').value.trim();
-        const tel_comercial = document.getElementById('empresa-tel-comercial').value.trim();
-        const tel_celular1 = document.getElementById('empresa-tel-cel1').value.trim();
-        const tel_celular2 = document.getElementById('empresa-tel-cel2').value.trim();
-        const ativo = document.getElementById('empresa-ativo').checked ? '1' : '0';
-
-        if (!cnpj || cnpj.length !== 14) {
-            mostrarMensagemEmpresas('Preencha o CNPJ corretamente (14 dígitos).', 'erro');
-            return;
-        }
-
-        if (!razao_social) {
-            mostrarMensagemEmpresas('Preencha a Razão Social.', 'erro');
-            return;
-        }
-
-        const formData = new FormData();
-        formData.append('cnpj', cnpj);
-        formData.append('razao_social', razao_social);
-        formData.append('nome_fantasia', nome_fantasia);
-        formData.append('cep', cep);
-        formData.append('endereco', endereco);
-        formData.append('bairro', bairro);
-        formData.append('cidade', cidade);
-        formData.append('uf', uf);
-        formData.append('cod_municipio', cod_municipio);
-        formData.append('email', email);
-        formData.append('site', site);
-        formData.append('tel_comercial', tel_comercial);
-        formData.append('tel_celular1', tel_celular1);
-        formData.append('tel_celular2', tel_celular2);
-        formData.append('ativo', ativo);
-
-        let action = 'create';
-        if (id) {
-            action = 'update';
-            formData.append('id', id);
-            formData.append('empresa_id', id);
-        }
-        formData.append('action', action);
-
-        fetch('/SISIPTU/php/empresas_api.php', {
-            method: 'POST',
-            body: formData
-        })
-            .then(r => r.json())
-            .then(data => {
-                if (data.sucesso) {
-                    mostrarMensagemEmpresas(data.mensagem, 'sucesso');
-                    form.reset();
-                    document.getElementById('empresa-ativo').checked = true;
-                    document.getElementById('empresa-id').value = '';
-                    window.empresaEditandoId = null;
-                    carregarEmpresas();
-                } else {
-                    mostrarMensagemEmpresas(data.mensagem || 'Erro ao salvar empresa.', 'erro');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                mostrarMensagemEmpresas('Erro ao salvar empresa.', 'erro');
-            });
-    });
-
-    if (btnNovo) {
-        btnNovo.addEventListener('click', function () {
-            form.reset();
-            document.getElementById('empresa-ativo').checked = true;
-            document.getElementById('empresa-id').value = '';
-            window.empresaEditandoId = null;
-            mostrarMensagemEmpresas('', null);
-        });
-    }
-
-    if (btnBuscar) {
-        btnBuscar.addEventListener('click', function () {
-            const q = document.getElementById('empresas-busca').value.trim();
-            carregarEmpresas(q);
-        });
-    }
-
-    if (btnLimparBusca) {
-        btnLimparBusca.addEventListener('click', function () {
-            document.getElementById('empresas-busca').value = '';
-            carregarEmpresas();
-        });
-    }
-
-    tabelaBody.addEventListener('click', function (e) {
-        const btn = e.target.closest('button');
-        if (!btn) return;
-
-        const id = btn.getAttribute('data-id');
-        if (!id) return;
-
-        if (btn.classList.contains('btn-edit')) {
-            editarEmpresa(id);
-        } else if (btn.classList.contains('btn-delete')) {
-            excluirEmpresa(id);
-        }
-    });
-}
-
-function validarCnpjEmpresa(cnpj) {
-    const cnpjLimpo = cnpj.replace(/[^0-9]/g, '');
-    if (cnpjLimpo.length !== 14) return;
-
-    validandoCnpj = true;
-    const formData = new FormData();
-    formData.append('cnpj', cnpjLimpo);
-    if (window.empresaEditandoId) {
-        formData.append('empresa_id', window.empresaEditandoId);
-    }
-
-    fetch('/SISIPTU/php/empresas_api.php?action=verificar-cnpj', {
-        method: 'POST',
-        body: formData
-    })
-        .then(r => r.json())
-        .then(data => {
-            validandoCnpj = false;
-            if (!data.sucesso) {
-                mostrarMensagemEmpresas(data.mensagem, 'erro');
-            }
-        })
-        .catch(err => {
-            validandoCnpj = false;
-            console.error('Erro ao validar CNPJ:', err);
-        });
-}
-
-function carregarEmpresas(q) {
-    const tabelaBody = document.querySelector('#tabela-empresas tbody');
-    if (!tabelaBody) return;
-
-    tabelaBody.innerHTML = '<tr><td colspan="10">Carregando...</td></tr>';
-
-    let url = '/SISIPTU/php/empresas_api.php?action=list';
-    if (q) {
-        url += '&q=' + encodeURIComponent(q);
-    }
-
-    fetch(url)
-        .then(r => r.json())
-        .then(data => {
-            if (!data.sucesso) {
-                tabelaBody.innerHTML = '<tr><td colspan="10">' + (data.mensagem || 'Erro ao carregar empresas.') + '</td></tr>';
-                return;
-            }
-
-            const empresas = data.empresas || [];
-            if (empresas.length === 0) {
-                tabelaBody.innerHTML = '<tr><td colspan="10">Nenhuma empresa cadastrada.</td></tr>';
-                return;
-            }
-
-            tabelaBody.innerHTML = empresas.map(e => {
-                const cnpjFormatado = e.cpf_cnpj ? e.cpf_cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
-                const telefone = e.tel_comercial || e.tel_celular1 || 'N/A';
-                return `
-                    <tr>
-                        <td>${e.id}</td>
-                        <td>${cnpjFormatado}</td>
-                        <td>${e.nome || ''}</td>
-                        <td>${e.nome || ''}</td>
-                        <td>${e.cidade || ''}</td>
-                        <td>${e.uf || ''}</td>
-                        <td>${e.email || ''}</td>
-                        <td>${telefone}</td>
-                        <td>${e.ativo ? 'Sim' : 'Não'}</td>
-                        <td>
-                            <div class="acoes">
-                                <button type="button" class="btn-small btn-edit" data-id="${e.id}">Editar</button>
-                                <button type="button" class="btn-small btn-delete" data-id="${e.id}">Excluir</button>
-                            </div>
-                        </td>
-                    </tr>
-                `;
-            }).join('');
-        })
-        .catch(err => {
-            console.error(err);
-            tabelaBody.innerHTML = '<tr><td colspan="10">Erro ao carregar empresas.</td></tr>';
-        });
-}
-
-function editarEmpresa(id) {
-    fetch('/SISIPTU/php/empresas_api.php?action=get&id=' + encodeURIComponent(id))
-        .then(r => r.json())
-        .then(data => {
-            if (!data.sucesso || !data.empresa) {
-                mostrarMensagemEmpresas(data.mensagem || 'Erro ao carregar empresa.', 'erro');
-                return;
-            }
-
-            const e = data.empresa;
-            window.empresaEditandoId = e.id;
-            document.getElementById('empresa-id').value = e.id;
-            
-            // Formatar CNPJ
-            const cnpj = e.cpf_cnpj ? e.cpf_cnpj.replace(/(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})/, '$1.$2.$3/$4-$5') : '';
-            document.getElementById('empresa-cnpj').value = cnpj;
-            
-            // Para empresas, o campo 'nome' pode ser nome_fantasia ou razao_social
-            // Vamos usar razao_social como nome principal
-            document.getElementById('empresa-razao-social').value = e.nome || '';
-            document.getElementById('empresa-nome-fantasia').value = e.nome || '';
-            document.getElementById('empresa-cep').value = e.cep || '';
-            document.getElementById('empresa-endereco').value = e.endereco || '';
-            document.getElementById('empresa-bairro').value = e.bairro || '';
-            document.getElementById('empresa-cidade').value = e.cidade || '';
-            document.getElementById('empresa-uf').value = e.uf || '';
-            document.getElementById('empresa-cod-municipio').value = e.cod_municipio || '';
-            document.getElementById('empresa-email').value = e.email || '';
-            document.getElementById('empresa-site').value = e.site || '';
-            document.getElementById('empresa-tel-comercial').value = e.tel_comercial || '';
-            document.getElementById('empresa-tel-cel1').value = e.tel_celular1 || '';
-            document.getElementById('empresa-tel-cel2').value = e.tel_celular2 || '';
-            document.getElementById('empresa-ativo').checked = !!e.ativo;
-
-            mostrarMensagemEmpresas('Empresa carregada para edição. Altere os dados e clique em Salvar.', 'sucesso');
-        })
-        .catch(err => {
-            console.error(err);
-            mostrarMensagemEmpresas('Erro ao carregar empresa.', 'erro');
-        });
-}
-
-function excluirEmpresa(id) {
-    if (!confirm('Tem certeza que deseja excluir esta empresa?')) {
-        return;
-    }
-
-    const formData = new FormData();
-    formData.append('id', id);
-    formData.append('action', 'delete');
-
-    fetch('/SISIPTU/php/empresas_api.php', {
-        method: 'POST',
-        body: formData
-    })
-        .then(r => r.json())
-        .then(data => {
-            if (data.sucesso) {
-                mostrarMensagemEmpresas(data.mensagem, 'sucesso');
-                carregarEmpresas();
-            } else {
-                mostrarMensagemEmpresas(data.mensagem || 'Erro ao excluir empresa.', 'erro');
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            mostrarMensagemEmpresas('Erro ao excluir empresa.', 'erro');
-        });
-}
-
-function mostrarMensagemEmpresas(texto, tipo) {
-    const msg = document.getElementById('empresas-mensagem');
-    if (!msg) return;
-    
-    if (!texto || !tipo) {
-        msg.style.display = 'none';
-        msg.textContent = '';
-        msg.className = 'mensagem';
-        return;
-    }
-    
-    msg.textContent = texto;
-    msg.className = 'mensagem ' + tipo;
-    msg.style.display = 'block';
-    
-    if (tipo === 'sucesso') {
-        setTimeout(() => {
-            msg.style.display = 'none';
-        }, 3000);
-    }
-}
-
 function mostrarMensagemCli(texto, tipo) {
     const msg = document.getElementById('cli-mensagem');
     if (!msg) return;
@@ -1896,31 +1478,17 @@ function mostrarMensagemBanco(texto, tipo) {
     if (!texto) {
         el.innerHTML = '';
         el.className = 'mensagem';
-        el.style.display = 'none';
         return;
     }
-    const tipoClass = tipo === 'sucesso' ? 'sucesso' : (tipo === 'info' ? 'info' : 'erro');
-    el.className = 'mensagem ' + tipoClass;
-    el.style.display = 'block';
+    el.className = 'mensagem ' + (tipo === 'sucesso' ? 'mensagem-sucesso' : 'mensagem-erro');
     el.innerHTML = `
         <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;">
             <span>${texto}</span>
-            <button type="button" class="btn-message-ok" onclick="this.parentNode.parentNode.innerHTML=''; this.parentNode.parentNode.style.display='none';">
+            <button type="button" class="btn-message-ok" onclick="this.parentNode.parentNode.innerHTML='';">
                 OK
             </button>
         </div>
     `;
-    
-    // Auto-ocultar após 8 segundos se for info ou sucesso
-    if (tipo === 'info' || tipo === 'sucesso') {
-        setTimeout(() => {
-            if (el) {
-                el.innerHTML = '';
-                el.className = 'mensagem';
-                el.style.display = 'none';
-            }
-        }, 8000);
-    }
 }
 
 function inicializarCadastroBancos() {
@@ -2064,7 +1632,7 @@ function inicializarCadastroBancos() {
             return caminhoDiretorio;
         }
         
-        // Tentar usar webkitRelativePath para extrair o diretório base selecionado
+        // Usar webkitRelativePath para extrair o diretório base selecionado
         if (primeiroArquivo.webkitRelativePath) {
             // Quando um diretório é selecionado, todos os arquivos têm webkitRelativePath
             // começando com o nome do diretório selecionado
@@ -2076,6 +1644,7 @@ function inicializarCadastroBancos() {
             if (caminhos.length === 0) return '';
             
             // Encontrar o prefixo comum até a primeira barra (diretório base selecionado)
+            // Todos os arquivos devem começar com o mesmo nome de diretório
             const primeiroCaminho = caminhos[0];
             const primeiraBarra = primeiroCaminho.indexOf('/');
             
@@ -2090,8 +1659,6 @@ function inicializarCadastroBancos() {
                 
                 if (todosMesmoDiretorio) {
                     // Retornar apenas o nome do diretório selecionado
-                    // Nota: Em navegadores web, não podemos obter o caminho completo por segurança
-                    // O usuário precisará digitar o caminho completo manualmente ou usar um caminho relativo
                     return nomeDiretorio;
                 } else {
                     // Se não, encontrar o prefixo comum mais longo
@@ -2117,6 +1684,8 @@ function inicializarCadastroBancos() {
                 }
             } else {
                 // Não há barra no caminho, então o arquivo está diretamente no diretório selecionado
+                // Neste caso, não podemos determinar o nome do diretório
+                // Retornar o nome do arquivo como referência
                 return primeiroCaminho;
             }
         }
@@ -2125,243 +1694,45 @@ function inicializarCadastroBancos() {
         return '';
     }
 
-    // Configuração do campo Remessa
+    // Seleção de diretório para Remessa
+    const btnProcurarRemessa = document.getElementById('btn-procurar-remessa');
+    const fileRemessa = document.getElementById('file-remessa');
     const inputRemessa = document.getElementById('banco-remessa');
-    const btnBuscarRemessa = document.getElementById('btn-buscar-remessa');
-    const listaDiretoriosRemessa = document.getElementById('banco-lista-diretorios-remessa');
     
-    if (inputRemessa && listaDiretoriosRemessa) {
-        // Carregar lista de diretórios ao inicializar
-        carregarListaDiretoriosBanco('remessa');
-        
-        // Event listener para mostrar/ocultar lista ao focar no input
-        inputRemessa.addEventListener('focus', function() {
-            if (listaDiretoriosRemessa.innerHTML.trim() !== '') {
-                listaDiretoriosRemessa.style.display = 'block';
-            }
+    if (btnProcurarRemessa && fileRemessa && inputRemessa) {
+        btnProcurarRemessa.addEventListener('click', function() {
+            fileRemessa.value = ''; // Limpar seleção anterior
+            fileRemessa.click();
         });
         
-        inputRemessa.addEventListener('input', function() {
-            carregarListaDiretoriosBanco('remessa');
-        });
-        
-        inputRemessa.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                listaDiretoriosRemessa.style.display = 'none';
-            }
-        });
-        
-        // Fechar lista ao clicar fora
-        document.addEventListener('click', function(e) {
-            if (inputRemessa && listaDiretoriosRemessa && 
-                !inputRemessa.contains(e.target) && 
-                !listaDiretoriosRemessa.contains(e.target) &&
-                btnBuscarRemessa && !btnBuscarRemessa.contains(e.target)) {
-                listaDiretoriosRemessa.style.display = 'none';
+        fileRemessa.addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                const caminho = extrairCaminhoDiretorio(files);
+                inputRemessa.value = caminho;
             }
         });
     }
-    
-    // Função para selecionar diretório Remessa (caminho absoluto)
-    window.selecionarDiretorioRemessa = function(diretorio) {
-        if (inputRemessa) {
-            // Garantir que é caminho absoluto (Windows)
-            let caminho = diretorio.trim();
-            // Normalizar separadores
-            caminho = caminho.replace(/\//g, '\\');
-            // Garantir que termina com \ se for diretório
-            if (caminho.length > 0 && !caminho.endsWith('\\') && caminho.length > 3) {
-                caminho += '\\';
-            }
-            inputRemessa.value = caminho;
-        }
-        if (listaDiretoriosRemessa) {
-            listaDiretoriosRemessa.style.display = 'none';
-        }
-    };
-    
-    // Botão Buscar Remessa
-    if (btnBuscarRemessa) {
-        btnBuscarRemessa.addEventListener('click', function() {
-            carregarListaDiretoriosBanco('remessa');
-            if (inputRemessa && listaDiretoriosRemessa) {
-                if (listaDiretoriosRemessa.innerHTML.trim() !== '') {
-                    listaDiretoriosRemessa.style.display = 'block';
-                }
-            }
-        });
-    }
-    
-    // Configuração do campo Retorno
+
+    // Seleção de diretório para Retorno
+    const btnProcurarRetorno = document.getElementById('btn-procurar-retorno');
+    const fileRetorno = document.getElementById('file-retorno');
     const inputRetorno = document.getElementById('banco-retorno');
-    const btnBuscarRetorno = document.getElementById('btn-buscar-retorno');
-    const listaDiretoriosRetorno = document.getElementById('banco-lista-diretorios-retorno');
     
-    if (inputRetorno && listaDiretoriosRetorno) {
-        // Carregar lista de diretórios ao inicializar
-        carregarListaDiretoriosBanco('retorno');
-        
-        // Event listener para mostrar/ocultar lista ao focar no input
-        inputRetorno.addEventListener('focus', function() {
-            if (listaDiretoriosRetorno.innerHTML.trim() !== '') {
-                listaDiretoriosRetorno.style.display = 'block';
-            }
+    if (btnProcurarRetorno && fileRetorno && inputRetorno) {
+        btnProcurarRetorno.addEventListener('click', function() {
+            fileRetorno.value = ''; // Limpar seleção anterior
+            fileRetorno.click();
         });
         
-        inputRetorno.addEventListener('input', function() {
-            carregarListaDiretoriosBanco('retorno');
-        });
-        
-        inputRetorno.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                listaDiretoriosRetorno.style.display = 'none';
-            }
-        });
-        
-        // Fechar lista ao clicar fora
-        document.addEventListener('click', function(e) {
-            if (inputRetorno && listaDiretoriosRetorno && 
-                !inputRetorno.contains(e.target) && 
-                !listaDiretoriosRetorno.contains(e.target) &&
-                btnBuscarRetorno && !btnBuscarRetorno.contains(e.target)) {
-                listaDiretoriosRetorno.style.display = 'none';
+        fileRetorno.addEventListener('change', function(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                const caminho = extrairCaminhoDiretorio(files);
+                inputRetorno.value = caminho;
             }
         });
     }
-    
-    // Função para selecionar diretório Retorno (caminho absoluto)
-    window.selecionarDiretorioRetorno = function(diretorio) {
-        if (inputRetorno) {
-            // Garantir que é caminho absoluto (Windows)
-            let caminho = diretorio.trim();
-            // Normalizar separadores
-            caminho = caminho.replace(/\//g, '\\');
-            // Garantir que termina com \ se for diretório
-            if (caminho.length > 0 && !caminho.endsWith('\\') && caminho.length > 3) {
-                caminho += '\\';
-            }
-            inputRetorno.value = caminho;
-        }
-        if (listaDiretoriosRetorno) {
-            listaDiretoriosRetorno.style.display = 'none';
-        }
-    };
-    
-    // Botão Buscar Retorno
-    if (btnBuscarRetorno) {
-        btnBuscarRetorno.addEventListener('click', function() {
-            carregarListaDiretoriosBanco('retorno');
-            if (inputRetorno && listaDiretoriosRetorno) {
-                if (listaDiretoriosRetorno.innerHTML.trim() !== '') {
-                    listaDiretoriosRetorno.style.display = 'block';
-                }
-            }
-        });
-    }
-    
-    // Função para carregar lista de diretórios (discos e pastas do Windows)
-    function carregarListaDiretoriosBanco(tipo) {
-        const input = tipo === 'remessa' ? inputRemessa : inputRetorno;
-        const lista = tipo === 'remessa' ? listaDiretoriosRemessa : listaDiretoriosRetorno;
-        
-        if (!lista) return;
-        
-        // Obter caminho atual do input ou começar pelos discos
-        const caminhoAtual = input ? input.value.trim() : '';
-        
-        // Construir URL da API
-        let url = '/SISIPTU/php/listar_diretorios_api.php?action=listar-pastas';
-        if (caminhoAtual) {
-            url += '&caminho=' + encodeURIComponent(caminhoAtual);
-        }
-        
-        fetch(url)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.sucesso) {
-                    lista.innerHTML = '<div style="padding: 10px; color: #d32f2f;">Erro: ' + (data.mensagem || 'Erro desconhecido') + '</div>';
-                    lista.style.display = 'block';
-                    return;
-                }
-                
-                const pastas = data.pastas || [];
-                if (pastas.length === 0) {
-                    lista.innerHTML = '<div style="padding: 10px; color: #666;">Nenhuma pasta encontrada.</div>';
-                    lista.style.display = 'block';
-                    return;
-                }
-                
-                const funcaoNavegar = tipo === 'remessa' ? 'navegarDiretorioRemessa' : 'navegarDiretorioRetorno';
-                const funcaoSelecionar = tipo === 'remessa' ? 'selecionarDiretorioRemessa' : 'selecionarDiretorioRetorno';
-                
-                // Mostrar caminho atual
-                let html = '';
-                if (data.caminho_atual) {
-                    html += `<div style="padding: 8px 12px; background: #f5f5f5; border-bottom: 2px solid #ddd; font-weight: bold; color: #2d8659;">
-                        📍 ${data.caminho_atual}
-                    </div>`;
-                }
-                
-                // Listar pastas
-                html += pastas.map(pasta => {
-                    const caminhoEscapado = pasta.caminho.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
-                    const nome = pasta.nome || pasta.caminho;
-                    const icone = pasta.tipo === 'disco' ? '💿' : pasta.tipo === 'voltar' ? '⬆️' : '📁';
-                    const estiloVoltar = pasta.tipo === 'voltar' ? 'font-weight: bold; color: #1976d2;' : '';
-                    
-                    return `
-                        <div class="ic-item-diretorio" style="padding: 10px 12px; cursor: pointer; border-bottom: 1px solid #f0f0f0; display: flex; align-items: center; gap: 8px; transition: background-color 0.2s; ${estiloVoltar}" 
-                             onmouseover="this.style.backgroundColor='#e3f2fd'; this.style.color='#1976d2';" 
-                             onmouseout="this.style.backgroundColor=''; this.style.color='';"
-                             onclick="${pasta.tipo === 'voltar' || pasta.tipo === 'disco' || pasta.tipo === 'pasta' ? funcaoNavegar + "('" + caminhoEscapado + "')" : funcaoSelecionar + "('" + caminhoEscapado + "')"}">
-                            <span style="font-size: 16px;">${icone}</span>
-                            <span style="flex: 1;">${nome}</span>
-                            ${pasta.tipo === 'pasta' || pasta.tipo === 'disco' ? '<span style="color: #999; font-size: 12px;">▶</span>' : ''}
-                        </div>
-                    `;
-                }).join('');
-                
-                // Adicionar botão "Selecionar este diretório" se houver caminho atual
-                if (data.caminho_atual && data.caminho_atual.length > 3) {
-                    const caminhoEscapado = data.caminho_atual.replace(/'/g, "\\'").replace(/\\/g, '\\\\');
-                    html += `
-                        <div style="padding: 12px; background: #e8f5e9; border-top: 2px solid #4caf50;">
-                            <button type="button" onclick="${funcaoSelecionar}('${caminhoEscapado}')" 
-                                    style="width: 100%; padding: 8px; background: #4caf50; color: white; border: none; border-radius: 4px; cursor: pointer; font-weight: bold;">
-                                ✓ Selecionar este diretório
-                            </button>
-                        </div>
-                    `;
-                }
-                
-                lista.innerHTML = html;
-                
-                // Mostrar lista
-                lista.style.display = 'block';
-            })
-            .catch(err => {
-                console.error('Erro ao carregar diretórios:', err);
-                lista.innerHTML = '<div style="padding: 10px; color: #d32f2f;">Erro ao carregar diretórios. Verifique o console.</div>';
-                lista.style.display = 'block';
-            });
-    }
-    
-    // Função para navegar em um diretório (sem selecionar)
-    window.navegarDiretorioRemessa = function(caminho) {
-        if (inputRemessa) {
-            inputRemessa.value = caminho;
-        }
-        carregarListaDiretoriosBanco('remessa');
-    };
-    
-    window.navegarDiretorioRetorno = function(caminho) {
-        if (inputRetorno) {
-            inputRetorno.value = caminho;
-        }
-        carregarListaDiretoriosBanco('retorno');
-    };
 
     carregarBancos();
 
@@ -2567,11 +1938,15 @@ function editarBanco(id) {
             document.getElementById('banco-convenio').value = b.convenio || '';
             
             // Formatar valores monetários
-            document.getElementById('banco-multa-mes').value = b.multa_mes ? parseFloat(b.multa_mes).toFixed(2).replace('.', ',') : '';
-            document.getElementById('banco-tarifa-bancaria').value = b.tarifa_bancaria ? parseFloat(b.tarifa_bancaria).toFixed(2).replace('.', ',') : '';
-            document.getElementById('banco-juros-mes').value = b.juros_mes ? parseFloat(b.juros_mes).toFixed(2).replace('.', ',') : '';
+            document.getElementById('banco-multa-mes').value =
+                (b.multa_mes === null || b.multa_mes === undefined || b.multa_mes === '') ? '' : parseFloat(b.multa_mes).toFixed(2).replace('.', ',');
+            document.getElementById('banco-tarifa-bancaria').value =
+                (b.tarifa_bancaria === null || b.tarifa_bancaria === undefined || b.tarifa_bancaria === '') ? '' : parseFloat(b.tarifa_bancaria).toFixed(2).replace('.', ',');
+            document.getElementById('banco-juros-mes').value =
+                (b.juros_mes === null || b.juros_mes === undefined || b.juros_mes === '') ? '' : parseFloat(b.juros_mes).toFixed(2).replace('.', ',');
             
-            document.getElementById('banco-prazo-devolucao').value = b.prazo_devolucao || '';
+            document.getElementById('banco-prazo-devolucao').value =
+                (b.prazo_devolucao === null || b.prazo_devolucao === undefined || b.prazo_devolucao === '') ? '' : b.prazo_devolucao;
             document.getElementById('banco-codigo-cedente').value = b.codigo_cedente || '';
             document.getElementById('banco-operacao-cedente').value = b.operacao_cedente || '';
             document.getElementById('banco-emissao-via-banco').checked = !!b.emissao_via_banco;
@@ -2886,26 +2261,12 @@ function inicializarGerarIptu() {
     let validandoContratoGerarIptu = false; // Flag para evitar loops durante validação
     
     if (contratoCodigoInput) {
-        // Validação APENAS quando sair do campo (blur)
         contratoCodigoInput.addEventListener('blur', function() {
             // Não executar se estiver validando (evitar loops)
             if (validandoContratoGerarIptu) return;
             
             if (timeoutValidacaoContrato) {
                 clearTimeout(timeoutValidacaoContrato);
-                timeoutValidacaoContrato = null;
-            }
-            
-            // Validar apenas se o campo tiver valor
-            const contratoCodigo = this.value.trim();
-            if (!contratoCodigo) {
-                // Se o campo estiver vazio, limpar campo de descrição
-                if (contratoDescricaoInput) {
-                    contratoDescricaoInput.value = '';
-                    contratoDescricaoInput.readOnly = false;
-                    contratoDescricaoInput.style.backgroundColor = '';
-                }
-                return;
             }
             
             // Aguardar um pouco antes de verificar para evitar conflito com alert
@@ -2915,23 +2276,18 @@ function inicializarGerarIptu() {
                 }
             }, 150);
         });
-        // Durante a digitação, apenas limpar mensagens de erro (sem validação)
         contratoCodigoInput.addEventListener('input', function() {
-            // Limpar timeout anterior (não vamos mais validar durante a digitação)
             if (timeoutValidacaoContrato) {
                 clearTimeout(timeoutValidacaoContrato);
-                timeoutValidacaoContrato = null;
             }
             
-            // Remover classe de erro durante a digitação
-            this.classList.remove('input-error');
-            this.placeholder = '';
-            
-            // Limpar mensagem de erro durante a digitação
-            const msgDiv = document.getElementById('gi-mensagem');
-            if (msgDiv && msgDiv.textContent.includes('Contrato')) {
-                msgDiv.textContent = '';
-                msgDiv.style.display = 'none';
+            // Verificar após 500ms de inatividade (apenas se não estiver validando)
+            if (!validandoContratoGerarIptu) {
+                timeoutValidacaoContrato = setTimeout(() => {
+                    if (!validandoContratoGerarIptu) {
+                        validarContratoGerarIptu();
+                    }
+                }, 500);
             }
         });
     }
@@ -3391,18 +2747,22 @@ function inicializarCadastroContratos() {
 
             this.value = v;
             
-            // Limpar timeout anterior (não vamos mais verificar durante a digitação)
+            // Limpar timeout anterior
             if (timeoutBuscaCliente) {
                 clearTimeout(timeoutBuscaCliente);
-                timeoutBuscaCliente = null;
             }
             
-            // Remover classe de erro durante a digitação
-            this.classList.remove('input-error');
-            this.placeholder = '';
+            // Verificar após 500ms de inatividade (apenas se não estiver validando)
+            if (!validandoCpfCnpjContrato) {
+                timeoutBuscaCliente = setTimeout(() => {
+                    if (!validandoCpfCnpjContrato) {
+                        validarCpfCnpjContrato();
+                    }
+                }, 500);
+            }
         });
         
-        // Validação APENAS quando sair do campo (blur)
+        // Validação no blur (mesma da tela de clientes)
         cpfCnpjInput.addEventListener('blur', function() {
             // Não executar se estiver validando (evitar loops)
             if (validandoCpfCnpjContrato) return;
@@ -3411,31 +2771,24 @@ function inicializarCadastroContratos() {
                 clearTimeout(timeoutBuscaCliente);
             }
             
-            // Validar APENAS quando sair do campo
+            // Validar se tem menos de 11 dígitos
             const cpfCnpj = this.value.trim();
-            if (!cpfCnpj) {
-                // Se o campo estiver vazio, limpar campos relacionados
-                if (clienteNomeInput) clienteNomeInput.value = '';
-                if (clienteIdInput) clienteIdInput.value = '';
-                return;
+            if (cpfCnpj) {
+                const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
+                if (docLimpo.length > 0 && docLimpo.length < 11) {
+                    // Usar alert ao invés de mostrarMensagemContrato para manter consistência
+                    alert('CPF/CNPJ deve ter no mínimo 11 dígitos. Digite um CPF (11 dígitos) ou CNPJ (14 dígitos).');
+                    // Usar setTimeout para evitar loop com o alert
+                    setTimeout(() => {
+                        if (!validandoCpfCnpjContrato) {
+                            this.focus();
+                        }
+                    }, 100);
+                    return;
+                }
             }
             
-            const docLimpo = cpfCnpj.replace(/[^0-9]/g, '');
-            
-            // Validar se tem 11 (CPF) ou 14 (CNPJ) dígitos
-            if (docLimpo.length !== 11 && docLimpo.length !== 14) {
-                alert('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.');
-                this.classList.add('input-error');
-                this.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
-                setTimeout(() => {
-                    if (!validandoCpfCnpjContrato) {
-                        this.focus();
-                    }
-                }, 100);
-                return;
-            }
-            
-            // Se tem a quantidade correta de dígitos, validar CPF/CNPJ
+            // Aguardar um pouco antes de verificar para evitar conflito com alert
             setTimeout(() => {
                 if (!validandoCpfCnpjContrato) {
                     validarCpfCnpjContrato();
@@ -3489,12 +2842,10 @@ function inicializarCadastroContratos() {
                 }, 200);
                 return;
             }
-        } else if (docLimpo.length > 0 && (docLimpo.length < 11 || (docLimpo.length > 11 && docLimpo.length < 14))) {
-            // Esta validação já foi feita no blur, mas mantemos como segurança
+        } else if (docLimpo.length > 0 && docLimpo.length < 11) {
             validandoCpfCnpjContrato = true; // Prevenir loops
             alert('CPF/CNPJ deve ter 11 (CPF) ou 14 (CNPJ) dígitos.');
-            cpfCnpjInput.classList.add('input-error');
-            cpfCnpjInput.placeholder = 'Digite 11 (CPF) ou 14 (CNPJ) dígitos';
+            // Aguardar o alert fechar completamente antes de focar
             setTimeout(() => {
                 validandoCpfCnpjContrato = false;
                 if (cpfCnpjInput) {
@@ -3505,8 +2856,8 @@ function inicializarCadastroContratos() {
                 if (clienteIdInput) clienteIdInput.value = '';
             }, 200);
             return;
-        } else if (docLimpo.length === 0) {
-            // Campo vazio, limpar campos relacionados
+        } else {
+            // Ainda não completou a digitação ou está vazio
             if (clienteNomeInput) clienteNomeInput.value = '';
             if (clienteIdInput) clienteIdInput.value = '';
             return;
@@ -4900,146 +4251,6 @@ function carregarPagina(page) {
             setTimeout(inicializarCadastroClientes, 0);
             break;
             
-        case 'cadastro-empresas':
-            titulo = 'Cadastro - Empresas';
-            conteudo = `
-                <div class="page-content" id="empresas-page">
-                    <h3>🏭 Cadastro de Empresas</h3>
-                    <p>Cadastre, altere, exclua e pesquise empresas.</p>
-                    
-                    <div class="form-section">
-                        <form id="form-empresa">
-                            <input type="hidden" id="empresa-id" name="id">
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline">
-                                    <label for="empresa-cnpj">CNPJ</label>
-                                    <input type="text" id="empresa-cnpj" name="cnpj" placeholder="CNPJ" maxlength="18" required>
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-razao-social">Razão Social</label>
-                                    <input type="text" id="empresa-razao-social" name="razao_social" placeholder="Razão Social" required>
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-nome-fantasia">Nome Fantasia</label>
-                                    <input type="text" id="empresa-nome-fantasia" name="nome_fantasia" placeholder="Nome Fantasia">
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline">
-                                    <label for="empresa-cep">CEP</label>
-                                    <input type="text" id="empresa-cep" name="cep" placeholder="CEP">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-endereco">Endereço</label>
-                                    <input type="text" id="empresa-endereco" name="endereco" placeholder="Endereço">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-bairro">Bairro</label>
-                                    <input type="text" id="empresa-bairro" name="bairro" placeholder="Bairro">
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline">
-                                    <label for="empresa-cidade">Cidade</label>
-                                    <input type="text" id="empresa-cidade" name="cidade" placeholder="Cidade">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-uf">UF</label>
-                                    <input type="text" id="empresa-uf" name="uf" placeholder="UF" maxlength="2" style="text-transform: uppercase;">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-cod-municipio">Cod. Município</label>
-                                    <input type="text" id="empresa-cod-municipio" name="cod_municipio" placeholder="Cod. Município">
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline">
-                                    <label for="empresa-email">E-mail</label>
-                                    <input type="email" id="empresa-email" name="email" placeholder="E-mail">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-site">Site</label>
-                                    <input type="text" id="empresa-site" name="site" placeholder="Site">
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline">
-                                    <label for="empresa-tel-comercial">Telefone Comercial</label>
-                                    <input type="text" id="empresa-tel-comercial" name="tel_comercial" placeholder="Telefone Comercial">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-tel-cel1">Telefone Celular 1</label>
-                                    <input type="text" id="empresa-tel-cel1" name="tel_celular1" placeholder="Telefone Celular 1">
-                                </div>
-                                <div class="form-group-inline">
-                                    <label for="empresa-tel-cel2">Telefone Celular 2</label>
-                                    <input type="text" id="empresa-tel-cel2" name="tel_celular2" placeholder="Telefone Celular 2">
-                                </div>
-                            </div>
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline checkbox-group">
-                                    <label>
-                                        <input type="checkbox" id="empresa-ativo" name="ativo" value="1" checked>
-                                        Ativo
-                                    </label>
-                                </div>
-                            </div>
-                            
-                            <div class="form-actions">
-                                <button type="submit" class="btn-primary" id="btn-salvar-empresa">Salvar</button>
-                                <button type="button" class="btn-secondary" id="btn-novo-empresa">Novo</button>
-                            </div>
-                            
-                            <div id="empresas-mensagem" class="mensagem" style="margin-top: 10px; display: none;"></div>
-                        </form>
-                    </div>
-                    
-                    <div class="table-section">
-                        <h4>Pesquisa de Empresas</h4>
-                        <div class="form-row" style="margin-bottom: 10px;">
-                            <div class="form-group-inline">
-                                <label for="empresas-busca">Pesquisar por Razão Social, Nome Fantasia ou CNPJ</label>
-                                <input type="text" id="empresas-busca" placeholder="Digite parte do nome ou CNPJ">
-                            </div>
-                            <div class="form-actions">
-                                <button type="button" class="btn-primary" id="btn-buscar-empresa">Pesquisar</button>
-                                <button type="button" class="btn-secondary" id="btn-limpar-busca-empresa">Limpar</button>
-                            </div>
-                        </div>
-                        
-                        <div class="table-wrapper">
-                            <table class="table" id="tabela-empresas">
-                                <thead>
-                                    <tr>
-                                        <th>ID</th>
-                                        <th>CNPJ</th>
-                                        <th>Razão Social</th>
-                                        <th>Nome Fantasia</th>
-                                        <th>Cidade</th>
-                                        <th>UF</th>
-                                        <th>E-mail</th>
-                                        <th>Telefone</th>
-                                        <th>Ativo</th>
-                                        <th>Ações</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    <!-- Linhas serão carregadas via JavaScript -->
-                                </tbody>
-                            </table>
-                        </div>
-                    </div>
-                </div>
-            `;
-            setTimeout(inicializarCadastroEmpresas, 0);
-            break;
-            
         case 'cadastro-empreendimentos':
             titulo = 'Cadastro - Empreendimentos';
             conteudo = `
@@ -5050,15 +4261,6 @@ function carregarPagina(page) {
                     <div class="form-section">
                         <form id="form-empreendimento">
                             <input type="hidden" id="emp-id" name="id">
-                            
-                            <div class="form-row">
-                                <div class="form-group-inline">
-                                    <label for="emp-empresa"><strong>Empresa</strong></label>
-                                    <select id="emp-empresa" name="empresa_id" title="Empresa">
-                                        <option value="">Selecione a empresa...</option>
-                                    </select>
-                                </div>
-                            </div>
                             
                             <div class="form-row">
                                 <div class="form-group-inline">
@@ -5413,31 +4615,19 @@ function carregarPagina(page) {
                             
                             <div class="form-row">
                                 <div class="form-group-inline">
-                                    <label for="banco-remessa" style="color: #2d8659; font-weight: bold; margin-bottom: 8px; display: block;">Cam.Remessa (Diretório)</label>
-                                    <div style="position: relative;">
-                                        <div style="display: flex; gap: 5px; align-items: center;">
-                                            <div style="position: relative; flex: 1;">
-                                                <input type="text" id="banco-remessa" name="caminho_remessa" placeholder="Caminho do diretório (ex: uploads/remessas)" style="width: 100%; padding: 8px 35px 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
-                                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #999; font-size: 14px;">🔄</span>
-                                            </div>
-                                            <button type="button" id="btn-buscar-remessa" class="btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Buscar</button>
-                                        </div>
-                                        <div id="banco-lista-diretorios-remessa" style="display: none; position: absolute; top: 100%; left: 0; right: 70px; margin-top: 2px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto; z-index: 1000;">
-                                        </div>
+                                    <label for="banco-remessa">Cam.Remessa (Diretório)</label>
+                                    <div style="display: flex; gap: 5px;">
+                                        <input type="text" id="banco-remessa" name="caminho_remessa" placeholder="Cam.Remessa (Diretório)" style="flex: 1;">
+                                        <button type="button" id="btn-procurar-remessa" class="btn-browse" title="Procurar diretório">📁</button>
+                                        <input type="file" id="file-remessa" webkitdirectory directory multiple style="display: none;">
                                     </div>
                                 </div>
                                 <div class="form-group-inline">
-                                    <label for="banco-retorno" style="color: #2d8659; font-weight: bold; margin-bottom: 8px; display: block;">Cam.Retorno (Diretório)</label>
-                                    <div style="position: relative;">
-                                        <div style="display: flex; gap: 5px; align-items: center;">
-                                            <div style="position: relative; flex: 1;">
-                                                <input type="text" id="banco-retorno" name="caminho_retorno" placeholder="Caminho do diretório (ex: uploads/retornos)" style="width: 100%; padding: 8px 35px 8px 12px; border: 1px solid #ddd; border-radius: 4px; background: #f8f9fa;">
-                                                <span style="position: absolute; right: 10px; top: 50%; transform: translateY(-50%); color: #999; font-size: 14px;">🔄</span>
-                                            </div>
-                                            <button type="button" id="btn-buscar-retorno" class="btn-secondary" style="padding: 8px 16px; background: #6c757d; color: white; border: none; border-radius: 4px; cursor: pointer;">Buscar</button>
-                                        </div>
-                                        <div id="banco-lista-diretorios-retorno" style="display: none; position: absolute; top: 100%; left: 0; right: 70px; margin-top: 2px; background: white; border: 1px solid #ddd; border-radius: 4px; box-shadow: 0 2px 8px rgba(0,0,0,0.1); max-height: 300px; overflow-y: auto; z-index: 1000;">
-                                        </div>
+                                    <label for="banco-retorno">Cam.Retorno (Diretório)</label>
+                                    <div style="display: flex; gap: 5px;">
+                                        <input type="text" id="banco-retorno" name="caminho_retorno" placeholder="Cam.Retorno (Diretório)" style="flex: 1;">
+                                        <button type="button" id="btn-procurar-retorno" class="btn-browse" title="Procurar diretório">📁</button>
+                                        <input type="file" id="file-retorno" webkitdirectory directory multiple style="display: none;">
                                     </div>
                                 </div>
                             </div>
@@ -5855,8 +5045,8 @@ function carregarPagina(page) {
                                 <thead>
                                     <tr>
                                         <th>Empreendimento</th>
-                                        <th>Módulo</th>
                                         <th>Lote\Quadra\Área</th>
+                                        <th>Módulo</th>
                                         <th>Contrato</th>
                                         <th>Inscrição</th>
                                         <th>Metragem</th>
@@ -5867,7 +5057,7 @@ function carregarPagina(page) {
                                         <th>Desconto à Vista</th>
                                         <th>Parcelamento</th>
                                         <th>Valor Anual</th>
-                                        <th>Cliente</th>
+                                        <th>CPF/CNPJ</th>
                                         <th>Situação</th>
                                         <th>Data Criação</th>
                                         <th>Data Atualização</th>
@@ -6036,9 +5226,6 @@ function carregarPagina(page) {
                                     <tr>
                                         <th>Título</th>
                                         <th>Ano Ref.</th>
-                                        <th>Empreendimento</th>
-                                        <th>Módulo</th>
-                                        <th>Contrato</th>
                                         <th>Parcela</th>
                                         <th>Vencimento</th>
                                         <th>Valor</th>
@@ -6048,7 +5235,7 @@ function carregarPagina(page) {
                                 </thead>
                                 <tbody id="tabela-manutencao-iptu-body">
                                     <tr>
-                                        <td colspan="10" style="text-align: center; padding: 20px; color: #666;">
+                                        <td colspan="7" style="text-align: center; padding: 20px; color: #666;">
                                             Informe os critérios de pesquisa e clique em "Pesquisar" para visualizar os títulos.
                                         </td>
                                     </tr>
@@ -6432,7 +5619,6 @@ function carregarPagina(page) {
                     <div style="background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
                         <h3 style="margin-bottom: 20px; color: #2d8659;">⚙️ Cobrança Automática</h3>
                         
-                        <!-- Seção Empreendimento -->
                         <div style="margin-bottom: 20px;">
                             <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Empreendimento</label>
                             <div style="display: flex; gap: 10px; align-items: flex-end;">
@@ -6444,7 +5630,6 @@ function carregarPagina(page) {
                             </div>
                         </div>
                         
-                        <!-- Informações do Banco -->
                         <div id="ca-info-banco" style="margin-bottom: 20px; padding: 15px; background: #f0f7f4; border-left: 4px solid #2d8659; border-radius: 4px; display: none;">
                             <h4 style="margin: 0 0 10px 0; color: #2d8659; font-size: 16px;">🏦 Informações do Banco</h4>
                             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
@@ -6467,7 +5652,6 @@ function carregarPagina(page) {
                             </div>
                         </div>
                         
-                        <!-- Seção Periodo de Referencia -->
                         <div style="margin-bottom: 20px;">
                             <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Periodo de Referencia</label>
                             <div style="display: flex; gap: 10px;">
@@ -6482,7 +5666,6 @@ function carregarPagina(page) {
                             </div>
                         </div>
                         
-                        <!-- Seção Por Título e Por Contrato -->
                         <div style="margin-bottom: 20px;">
                             <div style="display: flex; gap: 10px;">
                                 <div style="flex: 1;">
@@ -6496,7 +5679,6 @@ function carregarPagina(page) {
                             </div>
                         </div>
                         
-                        <!-- Checkbox Remissão dos Boletos -->
                         <div style="margin-top: 20px;">
                             <label style="display: flex; align-items: center; cursor: pointer; font-size: 14px;">
                                 <input type="checkbox" id="ca-remissao-boletos" name="remissao_boletos" value="1" style="margin-right: 8px; width: 18px; height: 18px; cursor: pointer;">
@@ -6504,14 +5686,12 @@ function carregarPagina(page) {
                             </label>
                         </div>
                         
-                        <!-- Botão Pesquisar -->
                         <div style="margin-top: 20px;">
                             <button type="button" id="btn-pesquisar-titulos" class="btn-primary" style="padding: 10px 20px;">
                                 🔍 Pesquisar Títulos
                             </button>
                         </div>
                         
-                        <!-- Grid de Títulos -->
                         <div style="margin-top: 30px;">
                             <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
                                 <h4 style="margin: 0; color: #2d8659;">Títulos que serão enviados</h4>
@@ -6554,81 +5734,11 @@ function carregarPagina(page) {
                             </div>
                         </div>
                         
-                        <!-- Mensagens -->
                         <div id="ca-mensagem" class="mensagem" style="margin-top: 15px; display: none;"></div>
                     </div>
                 </div>
             `;
             setTimeout(inicializarCobrancaAutomatica, 0);
-            break;
-            
-        case 'cobranca-retorno-bancario':
-            titulo = 'Cobrança - Retorno Bancário';
-            conteudo = `
-                <div class="page-content" id="cobranca-retorno-bancario-page" style="background: #f5f5f5; padding: 20px;">
-                    <div style="background: white; padding: 20px; border-radius: 5px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);">
-                        <h3 style="margin-bottom: 20px; color: #2d8659;">🏦 Retorno Bancário</h3>
-                        
-                        <!-- Seção Upload de Arquivo -->
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Arquivo de Retorno</label>
-                            <div style="display: flex; gap: 10px; align-items: flex-end;">
-                                <div style="flex: 1;">
-                                    <input type="file" id="rb-arquivo" name="arquivo" accept=".ret,.txt,.RET,.TXT" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-                                    <small style="color: #666; margin-top: 5px; display: block;">Formatos aceitos: .ret, .txt</small>
-                                </div>
-                                <button type="button" id="btn-processar-retorno" class="btn-primary" style="padding: 10px 20px; white-space: nowrap;">
-                                    📤 Processar Arquivo
-                                </button>
-                            </div>
-                        </div>
-                        
-                        <!-- Seção Banco -->
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Banco</label>
-                            <select id="rb-banco" name="banco_id" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-                                <option value="">Selecione o banco...</option>
-                            </select>
-                        </div>
-                        
-                        <!-- Seção Data de Movimento -->
-                        <div style="margin-bottom: 20px;">
-                            <label style="display: block; margin-bottom: 8px; font-weight: 600; color: #333;">Data de Movimento</label>
-                            <input type="date" id="rb-data-movimento" name="data_movimento" style="width: 100%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; font-size: 14px;">
-                        </div>
-                        
-                        <!-- Tabela de Resultados -->
-                        <div style="margin-top: 30px;">
-                            <h4 style="margin-bottom: 15px; color: #2d8659;">Resultado do Processamento</h4>
-                            <div class="table-wrapper" style="max-height: 500px; overflow-y: auto;">
-                                <table class="table" id="tabela-retorno-bancario">
-                                    <thead>
-                                        <tr>
-                                            <th>Linha</th>
-                                            <th>Tipo</th>
-                                            <th>Nosso Número</th>
-                                            <th>Valor</th>
-                                            <th>Data Pagamento</th>
-                                            <th>Status</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tabela-retorno-bancario-body">
-                                        <tr>
-                                            <td colspan="6" style="text-align: center; padding: 20px; color: #666;">
-                                                Nenhum arquivo processado ainda.
-                                            </td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </div>
-                        
-                        <!-- Mensagens -->
-                        <div id="rb-mensagem" class="mensagem" style="margin-top: 15px; display: none;"></div>
-                    </div>
-                </div>
-            `;
-            setTimeout(inicializarRetornoBancario, 0);
             break;
             
         case 'relatorios':
@@ -7399,8 +6509,8 @@ function buscarContratos(params) {
                 return `
                     <tr>
                         <td>${c.empreendimento_nome || ''}</td>
-                        <td>${c.modulo_nome || c.modulo || ''}</td>
                         <td>${c.area || ''}</td>
+                        <td>${c.modulo || ''}</td>
                         <td>${c.contrato || ''}</td>
                         <td>${c.inscricao || ''}</td>
                         <td>${metragem}</td>
@@ -7411,7 +6521,7 @@ function buscarContratos(params) {
                         <td>${descontoAVista}</td>
                         <td>${c.parcelamento || ''}</td>
                         <td>${valorAnual}</td>
-                        <td>${c.cliente_nome || ''}</td>
+                        <td>${c.cpf_cnpj || ''}</td>
                         <td>${c.situacao || ''}</td>
                         <td>${dataCriacao}</td>
                         <td>${dataAtualizacao}</td>
@@ -7469,8 +6579,48 @@ function inicializarManutencaoIptu() {
     
     if (!form || !btnPesquisar || !btnLimpar) return;
     
+    function carregarModulosManutencao(empId) {
+        if (!selectModulo) return;
+
+        const moduloSelecionadoAntes = selectModulo.value || '';
+        selectModulo.innerHTML = '<option value="">Selecione</option>';
+
+        if (!empId) return;
+
+        fetch(`/SISIPTU/php/modulos_api.php?action=list&empreendimento_id=${encodeURIComponent(empId)}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.sucesso && data.modulos) {
+                    // `modulos_api.php` atualmente retorna todos os módulos (não filtra por empreendimento no backend),
+                    // então filtramos aqui para garantir consistência na UI.
+                    const mods = (data.modulos || []).filter(m => String(m.empreendimento_id) === String(empId));
+
+                    mods.forEach(mod => {
+                        const opt = document.createElement('option');
+                        opt.value = mod.id;
+                        opt.textContent = mod.nome;
+                        selectModulo.appendChild(opt);
+                    });
+
+                    // Se já havia um módulo selecionado (ex.: estado restaurado), tentar manter
+                    if (moduloSelecionadoAntes) {
+                        // Só manter se o módulo ainda existir na lista filtrada
+                        const stillExists = mods.some(m => String(m.id) === String(moduloSelecionadoAntes));
+                        if (stillExists) {
+                            selectModulo.value = moduloSelecionadoAntes;
+                        } else {
+                            selectModulo.value = '';
+                        }
+                    }
+                }
+            })
+            .catch(err => console.error('Erro ao carregar módulos:', err));
+    }
+
     // Carregar empreendimentos
     if (selectEmpreendimento) {
+        const empreendimentoSelecionadoAntes = selectEmpreendimento.value || '';
+
         fetch('/SISIPTU/php/empreendimentos_api.php?action=list')
             .then(r => r.json())
             .then(data => {
@@ -7481,6 +6631,16 @@ function inicializarManutencaoIptu() {
                         opt.textContent = emp.nome;
                         selectEmpreendimento.appendChild(opt);
                     });
+
+                    // Se já havia empreendimento selecionado (ex.: estado restaurado), manter
+                    if (empreendimentoSelecionadoAntes) {
+                        selectEmpreendimento.value = empreendimentoSelecionadoAntes;
+                    }
+
+                    // Carregar módulos correspondentes ao empreendimento selecionado
+                    if (selectEmpreendimento.value) {
+                        carregarModulosManutencao(selectEmpreendimento.value);
+                    }
                 }
             })
             .catch(err => console.error('Erro ao carregar empreendimentos:', err));
@@ -7490,23 +6650,7 @@ function inicializarManutencaoIptu() {
     if (selectEmpreendimento && selectModulo) {
         selectEmpreendimento.addEventListener('change', function() {
             const empId = this.value;
-            selectModulo.innerHTML = '<option value="">Selecione</option>';
-            
-            if (empId) {
-                fetch(`/SISIPTU/php/modulos_api.php?action=list&empreendimento_id=${empId}`)
-                    .then(r => r.json())
-                    .then(data => {
-                        if (data.sucesso && data.modulos) {
-                            data.modulos.forEach(mod => {
-                                const opt = document.createElement('option');
-                                opt.value = mod.id;
-                                opt.textContent = mod.nome;
-                                selectModulo.appendChild(opt);
-                            });
-                        }
-                    })
-                    .catch(err => console.error('Erro ao carregar módulos:', err));
-            }
+            carregarModulosManutencao(empId);
         });
     }
     
@@ -7527,7 +6671,7 @@ function inicializarManutencaoIptu() {
         }
         const tabelaBody = document.getElementById('tabela-manutencao-iptu-body');
         if (tabelaBody) {
-            tabelaBody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: #666;">Informe os critérios de pesquisa e clique em "Pesquisar" para visualizar os títulos.</td></tr>';
+            tabelaBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #666;">Informe os critérios de pesquisa e clique em "Pesquisar" para visualizar os títulos.</td></tr>';
         }
         const mensagem = document.getElementById('mi-mensagem');
         if (mensagem) {
@@ -7680,7 +6824,7 @@ function pesquisarCobrancasManutencao() {
         return;
     }
     
-    tabelaBody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
+    tabelaBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
     
     // Construir URL com filtros
     const params = new URLSearchParams({ action: 'pesquisar' });
@@ -7694,17 +6838,23 @@ function pesquisarCobrancasManutencao() {
         .then(r => r.json())
         .then(data => {
             if (!data.sucesso) {
-                tabelaBody.innerHTML = `<tr><td colspan="10" style="text-align: center; padding: 20px; color: #d32f2f;">${data.mensagem || 'Erro ao buscar títulos.'}</td></tr>`;
+                tabelaBody.innerHTML = `<tr><td colspan="7" style="text-align: center; padding: 20px; color: #d32f2f;">${data.mensagem || 'Erro ao buscar títulos.'}</td></tr>`;
                 mostrarMensagemManutencao(data.mensagem || 'Erro ao buscar títulos.', 'erro');
                 return;
             }
             
             const cobrancas = data.cobrancas || [];
             if (cobrancas.length === 0) {
-                tabelaBody.innerHTML = '<tr><td colspan="10" style="text-align: center; padding: 20px; color: #666;">Nenhum título encontrado com os critérios informados.</td></tr>';
+                tabelaBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #666;">Nenhum título encontrado com os critérios informados.</td></tr>';
                 mostrarMensagemManutencao('Nenhum título encontrado.', 'info');
                 return;
             }
+
+            // Mostrar no grid apenas parcelas em aberto
+            const cobrancasEmAberto = cobrancas.filter(c => {
+                const pago = (c?.pago ?? '');
+                return String(pago).toUpperCase() !== 'S';
+            });
             
             // Preencher nome do cliente no campo desabilitado (usar o primeiro registro se houver)
             if (cobrancas.length > 0 && cobrancas[0].cliente_nome) {
@@ -7713,9 +6863,15 @@ function pesquisarCobrancasManutencao() {
                     campoCliente.value = cobrancas[0].cliente_nome;
                 }
             }
+
+            if (cobrancasEmAberto.length === 0) {
+                tabelaBody.innerHTML = '<tr><td colspan="7" style="text-align: center; padding: 20px; color: #666;">Nenhuma parcela em aberto encontrada para este contrato.</td></tr>';
+                mostrarMensagemManutencao('Nenhuma parcela em aberto encontrada.', 'info');
+                return;
+            }
             
             // Renderizar resultados
-            tabelaBody.innerHTML = cobrancas.map(c => {
+            tabelaBody.innerHTML = cobrancasEmAberto.map(c => {
                 // Formatar vencimento - usar datavencimento ou data_vencimento
                 // Usar a função formatarData que evita problemas de timezone
                 const dataVenc = c.data_vencimento || c.datavencimento;
@@ -7730,9 +6886,6 @@ function pesquisarCobrancasManutencao() {
                     <tr data-id="${c.id}">
                         <td>${c.titulo || c.id || ''}</td>
                         <td>${c.ano_referencia || ''}</td>
-                        <td>${c.empreendimento_nome || ''}</td>
-                        <td>${c.modulo_nome || ''}</td>
-                        <td>${c.contrato || ''}</td>
                         <td>${c.parcelamento || ''}</td>
                         <td>${vencimento}</td>
                         <td>${valor}</td>
@@ -7745,7 +6898,7 @@ function pesquisarCobrancasManutencao() {
                 `;
             }).join('');
             
-            mostrarMensagemManutencao(`${cobrancas.length} título(s) encontrado(s).`, 'sucesso');
+            mostrarMensagemManutencao(`${cobrancasEmAberto.length} parcela(s) em aberto encontrada(s).`, 'sucesso');
         })
         .catch(err => {
             console.error('Erro ao buscar títulos:', err);
@@ -8188,6 +7341,1076 @@ function verificarECarregarCliente(empreendimentoId, moduloId, contrato) {
         });
 }
 
+// ========== Baixa Manual (restaurada do Git) ==========
+function inicializarBaixaManual() {
+    const tabelaBody = document.getElementById('tbody-baixa-manual');
+    if (!tabelaBody) return;
+
+    let cobrancaSelecionada = null;
+    let cobrancasContrato = [];
+
+    // Carregar empreendimentos
+    carregarEmpreendimentosSelectBaixaManual();
+
+    // Quando selecionar empreendimento, filtrar módulos
+    const selectEmp = document.getElementById('bm-empreendimento');
+    if (selectEmp) {
+        selectEmp.addEventListener('change', function() {
+            const empId = this.value;
+            carregarModulosSelectBaixaManual(empId);
+            const campoContrato = document.getElementById('bm-contrato');
+            if (campoContrato) {
+                campoContrato.value = '';
+                campoContrato.style.borderColor = '#ccc';
+            }
+        });
+    }
+
+    // Quando selecionar módulo, limpar validação do contrato
+    const selectMod = document.getElementById('bm-modulo');
+    if (selectMod) {
+        selectMod.addEventListener('change', function() {
+            const campoContrato = document.getElementById('bm-contrato');
+            if (campoContrato) {
+                campoContrato.style.borderColor = '#ccc';
+            }
+        });
+    }
+
+    // Validação do campo contrato ao perder o foco ou pressionar Enter
+    const campoContrato = document.getElementById('bm-contrato');
+    if (campoContrato) {
+        campoContrato.addEventListener('blur', function() {
+            if (this.value.trim()) {
+                validarContratoBaixaManual();
+            } else {
+                this.style.borderColor = '#ccc';
+            }
+        });
+        
+        campoContrato.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this.value.trim()) {
+                    validarContratoBaixaManual();
+                }
+            }
+        });
+
+        campoContrato.addEventListener('input', function() {
+            if (this.style.borderColor === '#dc3545' || this.style.borderColor === '#28a745') {
+                this.style.borderColor = '#ccc';
+            }
+        });
+    }
+
+    // Preencher data de pagamento e baixa com hoje
+    const hoje = new Date();
+    const dataFormatada = hoje.toISOString().split('T')[0];
+    const campoDtPagtoInit = document.getElementById('bm-dt-pagto');
+    const campoDataBaixa = document.getElementById('bm-data-baixa');
+    if (campoDtPagtoInit) campoDtPagtoInit.value = dataFormatada;
+    if (campoDataBaixa) campoDataBaixa.value = dataFormatada;
+
+    // Botão Pesquisar Contrato
+    const btnPesquisarContrato = document.getElementById('btn-pesquisar-contrato-bm');
+    if (btnPesquisarContrato) {
+        btnPesquisarContrato.addEventListener('click', function() {
+            pesquisarContratoBaixaManual();
+        });
+    }
+
+    // Radio buttons para tipo de operação
+    const radioBaixar = document.getElementById('bm-tipo-baixar');
+    const radioEstornar = document.getElementById('bm-tipo-estornar');
+    
+    function revalidarTituloSePreenchido() {
+        const numTitulo = document.getElementById('bm-num-titulo').value.trim();
+        if (numTitulo) {
+            validarTituloBaixaManual();
+        }
+    }
+    
+    if (radioBaixar) {
+        radioBaixar.addEventListener('change', function() {
+            if (this.checked) {
+                // Refiltrar grid para mostrar apenas parcelas em aberto
+                exibirCobrancasNoGrid(cobrancasContrato);
+                cobrancaSelecionada = null;
+                revalidarTituloSePreenchido();
+            }
+        });
+    }
+    if (radioEstornar) {
+        radioEstornar.addEventListener('change', function() {
+            if (this.checked) {
+                // Refiltrar grid para mostrar apenas parcelas pagas
+                exibirCobrancasNoGrid(cobrancasContrato);
+                cobrancaSelecionada = null;
+                revalidarTituloSePreenchido();
+            }
+        });
+    }
+
+    // Validação do campo Nº do Título
+    const campoNumTitulo = document.getElementById('bm-num-titulo');
+    if (campoNumTitulo) {
+        campoNumTitulo.addEventListener('blur', function() {
+            if (this.value.trim()) validarTituloBaixaManual();
+        });
+        
+        campoNumTitulo.addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if (this.value.trim()) validarTituloBaixaManual();
+            }
+        });
+
+        campoNumTitulo.addEventListener('input', function() {
+            const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
+            if (msgErroTitulo) {
+                msgErroTitulo.style.display = 'none';
+                msgErroTitulo.textContent = '';
+            }
+            if (this.style.borderColor === '#dc3545' || this.style.borderColor === '#28a745') {
+                this.style.borderColor = '#ccc';
+            }
+        });
+    }
+
+    // Recalcular juros e multas quando a data de pagamento mudar
+    const campoDtPagtoRecalc = document.getElementById('bm-dt-pagto');
+    if (campoDtPagtoRecalc) {
+        campoDtPagtoRecalc.addEventListener('change', function() {
+            const numTitulo = document.getElementById('bm-num-titulo').value.trim();
+            if (numTitulo) validarTituloBaixaManual();
+        });
+    }
+
+    // Calcular valor a pagar automaticamente
+    const camposValor = ['bm-valor-parcela', 'bm-multa', 'bm-juros', 'bm-tarifa-bancaria', 'bm-desconto'];
+    camposValor.forEach(id => {
+        const campo = document.getElementById(id);
+        if (campo) campo.addEventListener('input', calcularValorAPagar);
+    });
+
+    // Botão Salvar
+    const btnSalvarBaixa = document.getElementById('btn-salvar-baixa-manual');
+    if (btnSalvarBaixa) {
+        btnSalvarBaixa.addEventListener('click', function() {
+            salvarBaixaManual();
+        });
+    }
+
+    function limparFormularioBaixa() {
+        document.getElementById('bm-num-titulo').value = '';
+        document.getElementById('bm-dt-pagto').value = dataFormatada;
+        document.getElementById('bm-data-baixa').value = dataFormatada;
+        document.getElementById('bm-valor-parcela').value = '';
+        document.getElementById('bm-multa').value = '';
+        document.getElementById('bm-juros').value = '';
+        document.getElementById('bm-tarifa-bancaria').value = '';
+        document.getElementById('bm-desconto').value = '';
+        document.getElementById('bm-valor-a-pagar').value = '0,00';
+        document.getElementById('bm-forma-pagto').value = '';
+        document.getElementById('bm-local-pg').value = '';
+        document.getElementById('bm-observacao').value = '';
+        
+        const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
+        if (msgErroTitulo) {
+            msgErroTitulo.style.display = 'none';
+            msgErroTitulo.textContent = '';
+        }
+        
+        if (campoContrato) campoContrato.style.borderColor = '#ccc';
+        if (campoNumTitulo) campoNumTitulo.style.borderColor = '#ccc';
+    }
+
+    function calcularValorAPagar() {
+        const valorParcela = parseFloat(document.getElementById('bm-valor-parcela').value.replace(',', '.')) || 0;
+        const multa = parseFloat(document.getElementById('bm-multa').value.replace(',', '.')) || 0;
+        const juros = parseFloat(document.getElementById('bm-juros').value.replace(',', '.')) || 0;
+        const tarifaBancaria = parseFloat(document.getElementById('bm-tarifa-bancaria').value.replace(',', '.')) || 0;
+        const desconto = parseFloat(document.getElementById('bm-desconto').value.replace(',', '.')) || 0;
+
+        const total = valorParcela + multa + juros + tarifaBancaria - desconto;
+        document.getElementById('bm-valor-a-pagar').value = total.toFixed(2).replace('.', ',');
+    }
+
+    function validarTituloBaixaManual() {
+        const empreendimentoId = document.getElementById('bm-empreendimento').value;
+        const moduloId = document.getElementById('bm-modulo').value;
+        const contrato = document.getElementById('bm-contrato').value.trim();
+        const numTitulo = document.getElementById('bm-num-titulo').value.trim();
+        const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
+
+        if (msgErroTitulo) {
+            msgErroTitulo.style.display = 'none';
+            msgErroTitulo.textContent = '';
+            msgErroTitulo.style.color = '#dc3545';
+            msgErroTitulo.style.fontWeight = '500';
+        }
+
+        if (!empreendimentoId || !moduloId || !contrato) {
+            mostrarMensagemBaixaManual('Selecione Empreendimento, Módulo e Contrato antes de validar o título.', 'erro');
+            return;
+        }
+        if (!numTitulo) return;
+
+        const params = new URLSearchParams();
+        params.append('action', 'buscar-por-titulo');
+        params.append('empreendimento_id', empreendimentoId);
+        params.append('modulo_id', moduloId);
+        params.append('contrato', contrato);
+        params.append('titulo', numTitulo);
+
+        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso || !data.cobranca) {
+                    if (msgErroTitulo) {
+                        msgErroTitulo.textContent = 'Título não encontrado';
+                        msgErroTitulo.style.display = 'block';
+                    }
+                    limparFormularioBaixa();
+                    campoNumTitulo.style.borderColor = '#dc3545';
+                    campoNumTitulo.focus();
+                    return;
+                }
+
+                const cobranca = data.cobranca;
+                const tipoOperacao = document.querySelector('input[name="bm-tipo-operacao-radio"]:checked')?.value;
+
+                // VALIDAÇÃO DE DUPLICIDADE
+                if ((cobranca.pago || '').toUpperCase() === 'S' && tipoOperacao === 'baixar') {
+                    const mensagemErro = 'Atenção: Este título já foi baixado anteriormente e não pode ser processado de novo.';
+                    if (msgErroTitulo) {
+                        msgErroTitulo.textContent = mensagemErro;
+                        msgErroTitulo.style.display = 'block';
+                        msgErroTitulo.style.color = '#dc3545';
+                        msgErroTitulo.style.fontWeight = 'bold';
+                    }
+                    mostrarMensagemBaixaManual(mensagemErro, 'erro');
+                    limparFormularioBaixa();
+                    campoNumTitulo.style.borderColor = '#dc3545';
+                    campoNumTitulo.focus();
+                    document.getElementById('bm-tipo-estornar').checked = true;
+                    return;
+                }
+
+                if (tipoOperacao === 'estornar') {
+                    document.getElementById('bm-valor-parcela').value = cobranca.valor_mensal ? parseFloat(cobranca.valor_mensal).toFixed(2).replace('.', ',') : '0,00';
+                    document.getElementById('bm-dt-pagto').value = cobranca.datapagamento ? cobranca.datapagamento.split('T')[0] : '';
+                    document.getElementById('bm-data-baixa').value = cobranca.databaixa ? cobranca.databaixa.split('T')[0] : '';
+                    document.getElementById('bm-multa').value = cobranca.multas ? parseFloat(cobranca.multas).toFixed(2).replace('.', ',') : '0,00';
+                    document.getElementById('bm-juros').value = cobranca.juros ? parseFloat(cobranca.juros).toFixed(2).replace('.', ',') : '0,00';
+                    document.getElementById('bm-tarifa-bancaria').value = cobranca.tarifa_bancaria ? parseFloat(cobranca.tarifa_bancaria).toFixed(2).replace('.', ',') : '0,00';
+                    document.getElementById('bm-desconto').value = cobranca.desconto ? parseFloat(cobranca.desconto).toFixed(2).replace('.', ',') : '0,00';
+                    document.getElementById('bm-forma-pagto').value = cobranca.forma_pagamento || '';
+                    document.getElementById('bm-local-pg').value = cobranca.local_pagamento || '';
+                    document.getElementById('bm-observacao').value = cobranca.observacao || '';
+                    calcularValorAPagar();
+                } else {
+                    document.getElementById('bm-valor-parcela').value = cobranca.valor_mensal ? parseFloat(cobranca.valor_mensal).toFixed(2).replace('.', ',') : '0,00';
+
+                    const dtPagto = document.getElementById('bm-dt-pagto').value;
+                    if (cobranca.datavencimento && dtPagto) {
+                        const dataVencimento = new Date(cobranca.datavencimento);
+                        const dataPagamento = new Date(dtPagto);
+                        if (dataVencimento < dataPagamento) {
+                            mostrarMensagemBaixaManual('⚠️ Parcela em atraso! Calculando juros e multas...', 'erro');
+
+                            // preferir cálculo do backend (que usa vencimento real)
+                            const paramsCalc = new URLSearchParams();
+                            paramsCalc.append('action', 'calcular-juros-multas');
+                            paramsCalc.append('cobranca_id', cobranca.id);
+                            paramsCalc.append('data_pagamento', dtPagto);
+
+                            fetch(`/SISIPTU/php/baixa_manual_api.php?${paramsCalc.toString()}`)
+                                .then(r => r.json())
+                                .then(dataCalc => {
+                                    if (dataCalc.sucesso) {
+                                        document.getElementById('bm-multa').value = dataCalc.multa ? parseFloat(dataCalc.multa).toFixed(2).replace('.', ',') : '0,00';
+                                        document.getElementById('bm-juros').value = dataCalc.juros ? parseFloat(dataCalc.juros).toFixed(2).replace('.', ',') : '0,00';
+                                        calcularValorAPagar();
+                                    }
+                                })
+                                .catch(() => {
+                                    // fallback client-side igual ao Git
+                                    const valorMensal = parseFloat(cobranca.valor_mensal || 0);
+                                    const diasAtraso = Math.ceil((new Date(dataPagamento) - new Date(cobranca.datavencimento)) / (1000 * 60 * 60 * 24));
+                                    const multa = valorMensal * 0.02;
+                                    const juros = valorMensal * (0.033 / 100) * diasAtraso;
+                                    document.getElementById('bm-multa').value = multa.toFixed(2).replace('.', ',');
+                                    document.getElementById('bm-juros').value = juros.toFixed(2).replace('.', ',');
+                                    calcularValorAPagar();
+                                });
+                        } else {
+                            document.getElementById('bm-multa').value = '0,00';
+                            document.getElementById('bm-juros').value = '0,00';
+                            calcularValorAPagar();
+                        }
+                    } else {
+                        calcularValorAPagar();
+                    }
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemBaixaManual('Erro ao validar título.', 'erro');
+            });
+    }
+
+    function validarContratoBaixaManual() {
+        const empreendimentoId = document.getElementById('bm-empreendimento').value;
+        const moduloId = document.getElementById('bm-modulo').value;
+        const contrato = document.getElementById('bm-contrato').value.trim();
+
+        if (!empreendimentoId || !moduloId || !contrato) return;
+
+        const params = new URLSearchParams();
+        params.append('action', 'validar-contrato');
+        params.append('empreendimento_id', empreendimentoId);
+        params.append('modulo_id', moduloId);
+        params.append('contrato', contrato);
+
+        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso) {
+                    mostrarMensagemBaixaManual(data.mensagem || 'Contrato não encontrado. Verifique se o número está correto.', 'erro');
+                    campoContrato.style.borderColor = '#dc3545';
+                    campoContrato.focus();
+                } else {
+                    campoContrato.style.borderColor = '#28a745';
+                    mostrarMensagemBaixaManual('Contrato válido.', 'sucesso');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemBaixaManual('Erro ao validar contrato.', 'erro');
+            });
+    }
+
+    function pesquisarContratoBaixaManual() {
+        const empreendimentoId = document.getElementById('bm-empreendimento').value;
+        const moduloId = document.getElementById('bm-modulo').value;
+        const contrato = document.getElementById('bm-contrato').value.trim();
+
+        if (!empreendimentoId || !moduloId || !contrato) {
+            mostrarMensagemBaixaManual('Selecione Empreendimento, Módulo e digite o Contrato.', 'erro');
+            return;
+        }
+
+        const params = new URLSearchParams();
+        params.append('action', 'pesquisar-contrato-completo');
+        params.append('empreendimento_id', empreendimentoId);
+        params.append('modulo_id', moduloId);
+        params.append('contrato', contrato);
+
+        mostrarMensagemBaixaManual('Pesquisando contrato...', 'info');
+
+        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso) {
+                    mostrarMensagemBaixaManual(data.mensagem || 'Contrato não encontrado.', 'erro');
+                    tabelaBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px; border: 1px solid #ddd;">Nenhuma parcela encontrada.</td></tr>';
+                    return;
+                }
+
+                const cobrancas = data.cobrancas || [];
+                if (cobrancas.length === 0) {
+                    mostrarMensagemBaixaManual('Nenhuma parcela encontrada para este contrato.', 'erro');
+                    tabelaBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px; border: 1px solid #ddd;">Nenhuma parcela encontrada.</td></tr>';
+                    return;
+                }
+
+                cobrancasContrato = cobrancas;
+                exibirCobrancasNoGrid(cobrancasContrato);
+                mostrarMensagemBaixaManual(`${cobrancas.length} parcela(s) encontrada(s) para o contrato ${contrato}.`, 'sucesso');
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemBaixaManual('Erro ao pesquisar contrato.', 'erro');
+            });
+    }
+
+    function salvarBaixaManual() {
+        const empreendimentoId = document.getElementById('bm-empreendimento').value;
+        const moduloId = document.getElementById('bm-modulo').value;
+        const contrato = document.getElementById('bm-contrato').value.trim();
+        const numTitulo = document.getElementById('bm-num-titulo').value.trim();
+        const tipoOperacao = document.querySelector('input[name="bm-tipo-operacao-radio"]:checked')?.value;
+
+        if (!empreendimentoId || !moduloId || !contrato || !numTitulo) {
+            mostrarMensagemBaixaManual('Preencha todos os campos obrigatórios (Empreendimento, Módulo, Contrato e Nº do Título).', 'erro');
+            return;
+        }
+        if (!tipoOperacao || !['baixar', 'estornar'].includes(tipoOperacao)) {
+            mostrarMensagemBaixaManual('Selecione a opção "Baixar Parcela" ou "Estornar Parcela" para salvar.', 'erro');
+            return;
+        }
+
+        const params = new URLSearchParams();
+        params.append('action', 'buscar-por-titulo');
+        params.append('empreendimento_id', empreendimentoId);
+        params.append('modulo_id', moduloId);
+        params.append('contrato', contrato);
+        params.append('titulo', numTitulo);
+
+        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
+            .then(r => r.json())
+            .then(data => {
+                if (!data.sucesso || !data.cobranca) {
+                    mostrarMensagemBaixaManual('Título não encontrado. Verifique se o número está correto.', 'erro');
+                    const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
+                    if (msgErroTitulo) {
+                        msgErroTitulo.textContent = 'Título não encontrado';
+                        msgErroTitulo.style.display = 'block';
+                    }
+                    return;
+                }
+
+                const cobrancaId = data.cobranca.id;
+                const dtPagto = document.getElementById('bm-dt-pagto').value;
+                const dataBaixa = document.getElementById('bm-data-baixa').value;
+                const multa = document.getElementById('bm-multa').value.replace(',', '.') || '0';
+                const juros = document.getElementById('bm-juros').value.replace(',', '.') || '0';
+                const tarifaBancaria = document.getElementById('bm-tarifa-bancaria').value.replace(',', '.') || '0';
+                const desconto = document.getElementById('bm-desconto').value.replace(',', '.') || '0';
+                const formaPagto = document.getElementById('bm-forma-pagto').value;
+                const localPg = document.getElementById('bm-local-pg').value;
+                const observacao = document.getElementById('bm-observacao').value.trim();
+
+                const formData = new FormData();
+                formData.append('action', 'salvar-baixa-completa');
+                formData.append('cobranca_id', cobrancaId);
+                formData.append('tipo_operacao', tipoOperacao);
+                formData.append('data_pagamento', dtPagto);
+                formData.append('data_baixa', dataBaixa);
+                formData.append('multa', multa);
+                formData.append('juros', juros);
+                formData.append('tarifa_bancaria', tarifaBancaria);
+                formData.append('desconto', desconto);
+                formData.append('forma_pagamento', formaPagto);
+                formData.append('local_pagamento', localPg);
+                formData.append('observacao', observacao);
+
+                return fetch('/SISIPTU/php/baixa_manual_api.php', { method: 'POST', body: formData });
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.sucesso) {
+                    const mensagem = tipoOperacao === 'estornar'
+                        ? (data.mensagem || 'Parcela estornada com sucesso!')
+                        : (data.mensagem || 'Parcela baixada com sucesso!');
+                    mostrarMensagemBaixaManual(mensagem, 'sucesso');
+                    limparFormularioBaixa();
+                    pesquisarContratoBaixaManual();
+                } else {
+                    mostrarMensagemBaixaManual(data.mensagem || 'Erro ao salvar baixa.', 'erro');
+                }
+            })
+            .catch(err => {
+                console.error(err);
+                mostrarMensagemBaixaManual('Erro ao salvar baixa.', 'erro');
+            });
+    }
+
+    function exibirCobrancasNoGrid(cobrancas) {
+        const tabelaBody = document.getElementById('tbody-baixa-manual');
+        if (!tabelaBody) return;
+
+        const tipoOperacao = document.querySelector('input[name="bm-tipo-operacao-radio"]:checked')?.value || 'baixar';
+        const isPago = (c) => ((c?.pago ?? 'N') + '').toUpperCase() === 'S';
+
+        const cobrancasFiltradas = (Array.isArray(cobrancas) ? cobrancas : []).filter(c => {
+            if (tipoOperacao === 'estornar') {
+                return isPago(c);
+            }
+            // baixar: somente em aberto
+            return !isPago(c);
+        });
+
+        tabelaBody.innerHTML = '';
+        if (cobrancasFiltradas.length === 0) {
+            const msg = (tipoOperacao === 'estornar')
+                ? 'Nenhuma parcela paga encontrada para estorno.'
+                : 'Nenhuma parcela em aberto encontrada para baixa.';
+            tabelaBody.innerHTML = `<tr><td colspan="9" style="text-align: center; padding: 20px; border: 1px solid #ddd;">${msg}</td></tr>`;
+            return;
+        }
+
+        cobrancasFiltradas.forEach(c => {
+            const tr = document.createElement('tr');
+            const valorTotal = calcularValorTotalCobrancaBaixa(c);
+            tr.style.cursor = 'pointer';
+            tr.onclick = function() {
+                tabelaBody.querySelectorAll('tr').forEach(row => {
+                    row.style.backgroundColor = '';
+                });
+                tr.style.backgroundColor = '#e3f2fd';
+                preencherFormularioBaixa(c);
+                cobrancaSelecionada = c;
+            };
+            
+            tr.innerHTML = `
+                <td style="padding: 8px; border: 1px solid #ddd;">${c.titulo || c.id || '-'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${c.cliente_nome || '-'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${c.valor_mensal ? parseFloat(c.valor_mensal).toFixed(2).replace('.', ',') : '0,00'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${c.multas ? parseFloat(c.multas).toFixed(2).replace('.', ',') : '0,00'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${c.juros ? parseFloat(c.juros).toFixed(2).replace('.', ',') : '0,00'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${valorTotal}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${c.datavencimento ? formatarData(c.datavencimento) : (c.data_vencimento ? formatarData(c.data_vencimento) : '-')}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${c.datapagamento ? formatarData(c.datapagamento) : '-'}</td>
+                <td style="padding: 8px; border: 1px solid #ddd;">${c.databaixa ? formatarData(c.databaixa) : '-'}</td>
+            `;
+            tabelaBody.appendChild(tr);
+        });
+    }
+
+    function preencherFormularioBaixa(c) {
+        document.getElementById('bm-num-titulo').value = c.titulo || c.id || '';
+        document.getElementById('bm-dt-pagto').value = c.datapagamento ? c.datapagamento.split('T')[0] : new Date().toISOString().split('T')[0];
+        document.getElementById('bm-data-baixa').value = c.databaixa ? c.databaixa.split('T')[0] : new Date().toISOString().split('T')[0];
+        document.getElementById('bm-valor-parcela').value = c.valor_mensal ? parseFloat(c.valor_mensal).toFixed(2).replace('.', ',') : '';
+        document.getElementById('bm-multa').value = c.multas ? parseFloat(c.multas).toFixed(2).replace('.', ',') : '';
+        document.getElementById('bm-juros').value = c.juros ? parseFloat(c.juros).toFixed(2).replace('.', ',') : '';
+        document.getElementById('bm-tarifa-bancaria').value = c.tarifa_bancaria ? parseFloat(c.tarifa_bancaria).toFixed(2).replace('.', ',') : '';
+        document.getElementById('bm-desconto').value = c.desconto ? parseFloat(c.desconto).toFixed(2).replace('.', ',') : '';
+        document.getElementById('bm-observacao').value = c.observacao || '';
+
+        if ((c.pago || '').toUpperCase() === 'S') {
+            document.getElementById('bm-tipo-estornar').checked = true;
+        } else {
+            document.getElementById('bm-tipo-baixar').checked = true;
+        }
+        calcularValorAPagar();
+    }
+
+    function calcularValorTotalCobrancaBaixa(c) {
+        const valorMensal = parseFloat(c.valor_mensal || 0);
+        const multas = parseFloat(c.multas || 0);
+        const juros = parseFloat(c.juros || 0);
+        const total = valorMensal + multas + juros;
+        return total.toFixed(2).replace('.', ',');
+    }
+}
+
+function carregarEmpreendimentosSelectBaixaManual() {
+    const select = document.getElementById('bm-empreendimento');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Selecione...</option>';
+
+    fetch('/SISIPTU/php/empreendimentos_api.php?action=list')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso) return;
+            const emps = data.empreendimentos || [];
+            emps.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id;
+                opt.textContent = e.nome;
+                select.appendChild(opt);
+            });
+        })
+        .catch(err => {
+            console.error(err);
+        });
+}
+
+function carregarModulosSelectBaixaManual(empreendimentoId = null) {
+    const select = document.getElementById('bm-modulo');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Selecione...</option>';
+
+    let url = '/SISIPTU/php/modulos_api.php?action=list';
+    if (empreendimentoId) {
+        url += '&empreendimento_id=' + encodeURIComponent(empreendimentoId);
+    }
+
+    fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso) return;
+            const mods = data.modulos || [];
+            if (empreendimentoId) {
+                mods.forEach(m => {
+                    if (m.empreendimento_id == empreendimentoId) {
+                        const opt = document.createElement('option');
+                        opt.value = m.id;
+                        opt.textContent = m.nome;
+                        select.appendChild(opt);
+                    }
+                });
+            } else {
+                mods.forEach(m => {
+                    const opt = document.createElement('option');
+                    opt.value = m.id;
+                    opt.textContent = m.nome;
+                    select.appendChild(opt);
+                });
+            }
+        })
+        .catch(err => {
+            console.error(err);
+        });
+}
+
+function mostrarMensagemBaixaManual(texto, tipo) {
+    const msg = document.getElementById('bm-mensagem');
+    if (!msg) return;
+
+    if (!texto || !tipo) {
+        msg.style.display = 'none';
+        return;
+    }
+
+    msg.textContent = texto;
+    msg.className = 'mensagem ' + tipo;
+    msg.style.display = 'block';
+
+    if (tipo === 'sucesso') {
+        setTimeout(() => {
+            msg.style.display = 'none';
+        }, 5000);
+    }
+}
+
+// ========== Cobrança Automática (restaurada do Git) ==========
+// Variável global para armazenar os títulos carregados
+let titulosCobrancaAutomatica = [];
+
+function inicializarCobrancaAutomatica() {
+    carregarEmpreendimentosSelectCobrancaAutomatica();
+    
+    const btnPesquisar = document.getElementById('btn-pesquisar-titulos');
+    if (btnPesquisar) {
+        btnPesquisar.addEventListener('click', function() {
+            pesquisarTitulosCobrancaAutomatica();
+        });
+    }
+    
+    const btnProcessar = document.getElementById('btn-processar-cobranca');
+    if (btnProcessar) {
+        btnProcessar.addEventListener('click', function() {
+            processarCobrancaAutomatica();
+        });
+    }
+    
+    const checkTodos = document.getElementById('check-todos-titulos');
+    if (checkTodos) {
+        checkTodos.addEventListener('change', function() {
+            const checked = this.checked;
+            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                cb.checked = checked;
+            });
+            atualizarBotaoProcessar();
+        });
+    }
+    
+    const btnSelecionarTodos = document.getElementById('btn-selecionar-todos');
+    if (btnSelecionarTodos) {
+        btnSelecionarTodos.addEventListener('click', function() {
+            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                cb.checked = true;
+            });
+            if (checkTodos) checkTodos.checked = true;
+            atualizarBotaoProcessar();
+        });
+    }
+    
+    const btnDeselecionarTodos = document.getElementById('btn-deselecionar-todos');
+    if (btnDeselecionarTodos) {
+        btnDeselecionarTodos.addEventListener('click', function() {
+            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                cb.checked = false;
+            });
+            if (checkTodos) checkTodos.checked = false;
+            atualizarBotaoProcessar();
+        });
+    }
+    
+    const selectEmpreendimento = document.getElementById('ca-empreendimento');
+    const inputPeriodoInicio = document.getElementById('ca-periodo-inicio');
+    const inputPeriodoFim = document.getElementById('ca-periodo-fim');
+    
+    if (selectEmpreendimento) {
+        selectEmpreendimento.addEventListener('change', function() {
+            const empreendimentoId = this.value;
+            if (empreendimentoId) {
+                carregarInfoBancoEmpreendimento(empreendimentoId);
+            } else {
+                ocultarInfoBanco();
+            }
+            limparGridCobrancaAutomatica();
+        });
+    }
+    
+    if (inputPeriodoInicio) {
+        inputPeriodoInicio.addEventListener('change', function() {
+            limparGridCobrancaAutomatica();
+        });
+    }
+    
+    if (inputPeriodoFim) {
+        inputPeriodoFim.addEventListener('change', function() {
+            limparGridCobrancaAutomatica();
+        });
+    }
+}
+
+function atualizarBotaoProcessar() {
+    const btnProcessar = document.getElementById('btn-processar-cobranca');
+    if (!btnProcessar) return;
+    
+    const selecionados = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]:checked');
+    btnProcessar.disabled = selecionados.length === 0;
+}
+
+function carregarInfoBancoEmpreendimento(empreendimentoId) {
+    if (!empreendimentoId) {
+        ocultarInfoBanco();
+        return;
+    }
+    
+    fetch(`/SISIPTU/php/empreendimentos_api.php?action=get&id=${empreendimentoId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso && data.empreendimento) {
+                const bancoId = data.empreendimento.banco_id;
+                if (bancoId) {
+                    fetch(`/SISIPTU/php/bancos_api.php?action=get&id=${bancoId}`)
+                        .then(r => r.json())
+                        .then(dataBanco => {
+                            if (dataBanco.sucesso && dataBanco.banco) {
+                                exibirInfoBanco(dataBanco.banco);
+                            } else {
+                                ocultarInfoBanco();
+                            }
+                        })
+                        .catch(err => {
+                            console.error('Erro ao buscar informações do banco:', err);
+                            ocultarInfoBanco();
+                        });
+                } else {
+                    ocultarInfoBanco();
+                }
+            } else {
+                ocultarInfoBanco();
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao buscar informações do empreendimento:', err);
+            ocultarInfoBanco();
+        });
+}
+
+function exibirInfoBanco(banco) {
+    const infoBancoDiv = document.getElementById('ca-info-banco');
+    const bancoNomeDiv = document.getElementById('ca-banco-nome');
+    const bancoAgenciaDiv = document.getElementById('ca-banco-agencia');
+    const bancoContaDiv = document.getElementById('ca-banco-conta');
+    const caminhoRemessaDiv = document.getElementById('ca-caminho-remessa');
+    
+    if (infoBancoDiv && bancoNomeDiv && bancoAgenciaDiv && bancoContaDiv && caminhoRemessaDiv) {
+        const nomeBanco = banco.banco || banco.apelido || `Banco ID ${banco.id}`;
+        bancoNomeDiv.textContent = nomeBanco;
+        bancoAgenciaDiv.textContent = banco.agencia || 'Não informado';
+        bancoContaDiv.textContent = banco.conta || 'Não informado';
+        caminhoRemessaDiv.textContent = banco.caminho_remessa || 'Não informado';
+        infoBancoDiv.style.display = 'block';
+    }
+}
+
+function ocultarInfoBanco() {
+    const infoBancoDiv = document.getElementById('ca-info-banco');
+    if (infoBancoDiv) infoBancoDiv.style.display = 'none';
+    const bancoNomeDiv = document.getElementById('ca-banco-nome');
+    const bancoAgenciaDiv = document.getElementById('ca-banco-agencia');
+    const bancoContaDiv = document.getElementById('ca-banco-conta');
+    const caminhoRemessaDiv = document.getElementById('ca-caminho-remessa');
+    if (bancoNomeDiv) bancoNomeDiv.textContent = '-';
+    if (bancoAgenciaDiv) bancoAgenciaDiv.textContent = '-';
+    if (bancoContaDiv) bancoContaDiv.textContent = '-';
+    if (caminhoRemessaDiv) caminhoRemessaDiv.textContent = '-';
+}
+
+function limparGridCobrancaAutomatica() {
+    const tabelaBody = document.getElementById('tabela-cobranca-automatica-body');
+    if (tabelaBody) {
+        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Selecione o empreendimento e o período de referência, depois clique em "Pesquisar Títulos".</td></tr>';
+    }
+    titulosCobrancaAutomatica = [];
+    atualizarBotaoProcessar();
+}
+
+function pesquisarTitulosCobrancaAutomatica() {
+    const empreendimentoId = document.getElementById('ca-empreendimento')?.value || '';
+    const periodoInicio = document.getElementById('ca-periodo-inicio')?.value || '';
+    const periodoFim = document.getElementById('ca-periodo-fim')?.value || '';
+    const titulo = document.getElementById('ca-titulo')?.value.trim() || '';
+    const contrato = document.getElementById('ca-contrato')?.value.trim() || '';
+    const tabelaBody = document.getElementById('tabela-cobranca-automatica-body');
+    
+    if (!empreendimentoId) {
+        mostrarMensagemCobrancaAutomatica('Selecione o empreendimento.', 'erro');
+        return;
+    }
+    if (!periodoInicio || !periodoFim) {
+        mostrarMensagemCobrancaAutomatica('Informe o período de referência (data início e data fim).', 'erro');
+        return;
+    }
+    
+    if (tabelaBody) {
+        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
+    }
+    
+    const params = new URLSearchParams();
+    params.append('action', 'pesquisar-titulos');
+    params.append('empreendimento_id', empreendimentoId);
+    params.append('periodo_inicio', periodoInicio);
+    params.append('periodo_fim', periodoFim);
+    if (titulo) params.append('titulo', titulo);
+    if (contrato) params.append('contrato', contrato);
+    
+    fetch(`/SISIPTU/php/cobranca_automatica_api.php?${params.toString()}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.sucesso) {
+                const mensagemAtual = document.getElementById('ca-mensagem');
+                if (!mensagemAtual || mensagemAtual.style.display === 'none' || !mensagemAtual.textContent.includes('Processados')) {
+                    mostrarMensagemCobrancaAutomatica(`Encontrados ${data.total || 0} título(s).`, 'sucesso');
+                }
+                
+                titulosCobrancaAutomatica = data.titulos || [];
+                
+                if (tabelaBody) {
+                    if (!data.titulos || data.titulos.length === 0) {
+                        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Nenhum título encontrado para os filtros selecionados.</td></tr>';
+                        atualizarBotaoProcessar();
+                    } else {
+                        let html = '';
+                        data.titulos.forEach((t, index) => {
+                            const vencimento = t.datavencimento ? formatarData(t.datavencimento) : '-';
+                            const valor = parseFloat(t.valor_mensal || 0).toFixed(2).replace('.', ',');
+                            const tituloId = t.id;
+                            
+                            html += `
+                                <tr>
+                                    <td style="text-align: center;">
+                                        <input type="checkbox" data-titulo-id="${tituloId}" data-titulo-index="${index}" style="cursor: pointer;">
+                                    </td>
+                                    <td>${t.titulo || t.id || '-'}</td>
+                                    <td>${t.cliente_nome || '-'}</td>
+                                    <td>${t.parcelamento || '-'}</td>
+                                    <td>${vencimento}</td>
+                                    <td style="text-align: right;">R$ ${valor}</td>
+                                </tr>
+                            `;
+                        });
+                        tabelaBody.innerHTML = html;
+                        
+                        document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
+                            cb.addEventListener('change', function() {
+                                atualizarCheckTodos();
+                                atualizarBotaoProcessar();
+                            });
+                        });
+                        
+                        atualizarBotaoProcessar();
+                    }
+                }
+            } else {
+                mostrarMensagemCobrancaAutomatica(data.mensagem || 'Erro ao pesquisar títulos.', 'erro');
+                if (tabelaBody) {
+                    tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao pesquisar títulos.</td></tr>';
+                }
+                atualizarBotaoProcessar();
+            }
+        })
+        .catch(err => {
+            console.error('Erro ao pesquisar títulos:', err);
+            mostrarMensagemCobrancaAutomatica('Erro ao pesquisar títulos. Verifique o console para mais detalhes.', 'erro');
+            if (tabelaBody) {
+                tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao pesquisar títulos.</td></tr>';
+            }
+        });
+}
+
+function atualizarCheckTodos() {
+    const checkTodos = document.getElementById('check-todos-titulos');
+    if (!checkTodos) return;
+    
+    const checkboxes = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]');
+    const todosSelecionados = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
+    checkTodos.checked = todosSelecionados;
+}
+
+function processarCobrancaAutomatica() {
+    const selecionados = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]:checked');
+    if (selecionados.length === 0) {
+        mostrarMensagemCobrancaAutomatica('Selecione pelo menos um título para processar.', 'erro');
+        return;
+    }
+    
+    const titulosIds = Array.from(selecionados).map(cb => {
+        const index = parseInt(cb.getAttribute('data-titulo-index'));
+        return titulosCobrancaAutomatica[index];
+    });
+    
+    const empreendimentoId = document.getElementById('ca-empreendimento')?.value || '';
+    const periodoInicio = document.getElementById('ca-periodo-inicio')?.value || '';
+    const periodoFim = document.getElementById('ca-periodo-fim')?.value || '';
+    const remissaoBoletos = document.getElementById('ca-remissao-boletos')?.checked || false;
+    
+    if (!empreendimentoId || !periodoInicio || !periodoFim) {
+        mostrarMensagemCobrancaAutomatica('Preencha todos os campos obrigatórios.', 'erro');
+        return;
+    }
+    
+    const confirmar = confirm(`Deseja processar ${titulosIds.length} título(s) selecionado(s)?`);
+    if (!confirmar) return;
+    
+    mostrarMensagemCobrancaAutomatica('Processando títulos...', 'info');
+    const btnProcessar = document.getElementById('btn-processar-cobranca');
+    if (btnProcessar) btnProcessar.disabled = true;
+    
+    const dados = {
+        action: 'processar',
+        empreendimento_id: empreendimentoId,
+        periodo_inicio: periodoInicio,
+        periodo_fim: periodoFim,
+        remissao_boletos: remissaoBoletos ? 1 : 0,
+        titulos: titulosIds.map(t => ({
+            id: t.id,
+            titulo: t.titulo || t.id,
+            contrato: t.contrato,
+            cliente_nome: t.cliente_nome,
+            modulo_id: t.modulo_id,
+            valor_mensal: t.valor_mensal,
+            datavencimento: t.datavencimento
+        }))
+    };
+    
+    mostrarMensagemCobrancaAutomatica('Processando títulos e gerando arquivo de remessa CNAB...', 'info');
+    
+    fetch('/SISIPTU/php/cobranca_automatica_api.php', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(dados)
+    })
+    .then(r => {
+        if (!r.ok) {
+            throw new Error(`Erro HTTP: ${r.status} ${r.statusText}`);
+        }
+        return r.text().then(text => {
+            try {
+                return JSON.parse(text);
+            } catch (e) {
+                console.error('Resposta não é JSON válido:', text);
+                throw new Error('Resposta do servidor não é JSON válido. Verifique os logs do servidor.');
+            }
+        });
+    })
+    .then(data => {
+        if (!data) throw new Error('Resposta vazia do servidor');
+        
+        if (data.sucesso) {
+            let mensagem = data.mensagem || `Processados ${titulosIds.length} título(s) com sucesso!`;
+            
+            if (data.remessa_gerada && data.arquivo_cnab) {
+                mensagem += `\n\n📄 Arquivo CNAB de remessa gerado: ${data.arquivo_cnab}`;
+                if (data.caminho_cnab) {
+                    mensagem += `\n📁 Salvo em: ${data.caminho_cnab}`;
+                }
+            }
+            
+            if (data.erros && data.erros.length > 0) {
+                mensagem += `\n\n⚠️ Atenção: ${data.erros.length} erro(s) encontrado(s):`;
+                data.erros.forEach(erro => {
+                    mensagem += `\n   • ${erro}`;
+                });
+            }
+            
+            mostrarMensagemCobrancaAutomatica(mensagem, 'sucesso');
+            
+            setTimeout(() => {
+                const mensagemAtual = document.getElementById('ca-mensagem');
+                const mensagemTexto = mensagemAtual ? (mensagemAtual.innerHTML || mensagemAtual.textContent) : '';
+                const mensagemTipo = mensagemAtual ? mensagemAtual.className.replace('mensagem ', '') : '';
+                
+                pesquisarTitulosCobrancaAutomatica();
+                
+                setTimeout(() => {
+                    if (mensagemTexto && mensagemAtual) {
+                        mensagemAtual.innerHTML = mensagemTexto;
+                        mensagemAtual.className = `mensagem ${mensagemTipo}`;
+                        mensagemAtual.style.display = 'block';
+                    }
+                }, 500);
+            }, 2000);
+        } else {
+            const mensagemErro = data.mensagem || 'Erro ao processar títulos. Verifique os logs do servidor.';
+            console.error('Erro no processamento:', data);
+            mostrarMensagemCobrancaAutomatica(mensagemErro, 'erro');
+        }
+    })
+    .catch(err => {
+        console.error('Erro ao processar títulos:', err);
+        const mensagemErro = err.message || 'Erro ao processar títulos. Verifique o console e os logs do servidor para mais detalhes.';
+        mostrarMensagemCobrancaAutomatica(mensagemErro, 'erro');
+    })
+    .finally(() => {
+        if (btnProcessar) {
+            atualizarBotaoProcessar();
+        }
+    });
+}
+
+function mostrarMensagemCobrancaAutomatica(mensagem, tipo) {
+    const mensagemDiv = document.getElementById('ca-mensagem');
+    if (!mensagemDiv) return;
+    
+    if (mensagem.includes('\n')) {
+        mensagemDiv.innerHTML = mensagem.replace(/\n/g, '<br>');
+    } else {
+        mensagemDiv.textContent = mensagem;
+    }
+    
+    mensagemDiv.className = `mensagem ${tipo}`;
+    mensagemDiv.style.display = 'block';
+    mensagemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+function carregarEmpreendimentosSelectCobrancaAutomatica() {
+    const select = document.getElementById('ca-empreendimento');
+    if (!select) return;
+
+    select.innerHTML = '<option value="">Selecione o empreendimento...</option>';
+
+    fetch('/SISIPTU/php/empreendimentos_api.php?action=list')
+        .then(r => r.json())
+        .then(data => {
+            if (!data.sucesso) return;
+            const emps = data.empreendimentos || [];
+            emps.forEach(e => {
+                const opt = document.createElement('option');
+                opt.value = e.id;
+                opt.textContent = e.nome;
+                select.appendChild(opt);
+            });
+        })
+        .catch(err => {
+            console.error('Erro ao carregar empreendimentos:', err);
+        });
+}
+
 function mostrarMensagemConsulta(texto, tipo) {
     const mensagem = document.getElementById('cc-mensagem');
     if (!mensagem) return;
@@ -8423,6 +8646,92 @@ function enviarExtratoEmail(empreendimentoId, moduloId, contrato, cliente, param
     });
 }
 
+function mostrarModalTelefoneWhatsApp({ telefoneInicial = '', cliente = '', contrato = '', onConfirm }) {
+    const modal = document.createElement('div');
+    modal.id = 'modal-whatsapp-telefone';
+    modal.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 10001; display: flex; align-items: center; justify-content: center;';
+
+    modal.innerHTML = `
+        <div style="background: white; padding: 24px; border-radius: 10px; max-width: 520px; width: 92%; box-shadow: 0 4px 20px rgba(0,0,0,0.3);">
+            <h3 style="margin-bottom: 12px; color: #2d8659;">💬 Enviar por WhatsApp</h3>
+            <p style="margin-bottom: 14px; color: #666; font-size: 14px;">
+                <strong>Cliente:</strong> ${cliente || 'Não informado'}<br>
+                <strong>Contrato:</strong> ${contrato}
+            </p>
+
+            <label for="wa-telefone" style="display:block; margin-bottom: 6px; color:#444; font-weight:600;">Telefone (com DDD)</label>
+            <input id="wa-telefone" type="tel" placeholder="Ex: 11912345678" value="${telefoneInicial || ''}"
+                   style="width: 100%; padding: 10px 12px; border: 1px solid #ccc; border-radius: 6px; outline: none;">
+            <div style="margin-top: 6px; color:#777; font-size: 12px;">Digite apenas números. Ex.: 11912345678</div>
+            <div id="wa-erro" style="margin-top: 10px; color:#b00020; font-size: 13px; display:none;"></div>
+
+            <div style="display:flex; gap: 10px; margin-top: 18px;">
+                <button type="button" id="wa-cancelar" class="btn-secondary" style="flex:1; padding: 10px;">Cancelar</button>
+                <button type="button" id="wa-enviar" class="btn-primary" style="flex:1; padding: 10px; background:#25D366;">Enviar</button>
+            </div>
+        </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const input = modal.querySelector('#wa-telefone');
+    const elErro = modal.querySelector('#wa-erro');
+    const btnEnviar = modal.querySelector('#wa-enviar');
+    const btnCancelar = modal.querySelector('#wa-cancelar');
+
+    const fechar = () => {
+        if (modal && modal.parentNode) modal.parentNode.removeChild(modal);
+        document.removeEventListener('keydown', onEsc);
+    };
+
+    const mostrarErro = (msg) => {
+        if (!elErro) return;
+        elErro.textContent = msg || '';
+        elErro.style.display = msg ? 'block' : 'none';
+    };
+
+    const normalizarTelefone = (tel) => {
+        let t = String(tel || '').replace(/\D/g, '');
+        // Se usuário colar com 55 na frente, remover (fica só DDD+numero)
+        if (t.length >= 12 && t.startsWith('55')) {
+            t = t.substring(2);
+        }
+        return t;
+    };
+
+    const enviar = () => {
+        const telDigitado = normalizarTelefone(input ? input.value : '');
+        if (!telDigitado || (telDigitado.length !== 10 && telDigitado.length !== 11)) {
+            mostrarErro('Telefone inválido. Informe DDD + número (10 ou 11 dígitos).');
+            if (input) input.focus();
+            return;
+        }
+        mostrarErro('');
+        if (typeof onConfirm === 'function') {
+            onConfirm(telDigitado);
+        }
+        fechar();
+    };
+
+    const onEsc = (e) => {
+        if (e.key === 'Escape') fechar();
+    };
+
+    btnEnviar && btnEnviar.addEventListener('click', enviar);
+    btnCancelar && btnCancelar.addEventListener('click', fechar);
+    modal.addEventListener('click', (e) => { if (e.target === modal) fechar(); });
+    document.addEventListener('keydown', onEsc);
+    input && input.addEventListener('keydown', (e) => { if (e.key === 'Enter') enviar(); });
+
+    // Foco no campo
+    setTimeout(() => {
+        if (input) {
+            input.focus();
+            input.select();
+        }
+    }, 0);
+}
+
 function enviarExtratoWhatsApp(empreendimentoId, moduloId, contrato, cliente, params) {
     // Buscar telefone do cliente no cadastro (prioridade: celular1 > celular2 > comercial > residencial)
     const campoCliente = document.getElementById('cc-cliente');
@@ -8439,31 +8748,48 @@ function enviarExtratoWhatsApp(empreendimentoId, moduloId, contrato, cliente, pa
     if (telefone) {
         telefone = telefone.replace(/\D/g, '');
     }
-    
-    // Se não encontrou telefone no cadastro, solicitar ao usuário
-    if (!telefone || telefone.length < 10) {
-        telefone = prompt('Telefone do cliente não encontrado no cadastro.\n\nDigite o telefone do cliente (com DDD, apenas números):');
-        if (!telefone) {
-            return;
+
+    // Mostrar número que será enviado e permitir alterar antes de abrir o WhatsApp
+    mostrarModalTelefoneWhatsApp({
+        telefoneInicial: telefone,
+        cliente,
+        contrato,
+        onConfirm: (telefoneConfirmado) => {
+            // Gerar link público assinado (sem precisar de login)
+            fetch('/SISIPTU/php/extrato_api.php', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                body: new URLSearchParams({
+                    action: 'gerar-link-publico',
+                    empreendimento_id: empreendimentoId,
+                    modulo_id: moduloId,
+                    contrato: contrato,
+                    cliente: cliente,
+                    ...Object.fromEntries(params)
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (!data || !data.sucesso || !data.url) {
+                    mostrarMensagemConsulta(data?.mensagem || 'Erro ao gerar link público do extrato.', 'erro');
+                    return;
+                }
+
+                const pdfUrl = data.url;
+                const mensagem = encodeURIComponent(
+                    `Olá! Segue o extrato de IPTU do contrato ${contrato}.\n\n` +
+                    `Cliente: ${cliente}\n` +
+                    `Extrato (PDF):\n${pdfUrl}`
+                );
+                const urlWhatsApp = `https://wa.me/55${telefoneConfirmado}?text=${mensagem}`;
+                window.open(urlWhatsApp, '_blank');
+            })
+            .catch(err => {
+                console.error('Erro ao gerar link público:', err);
+                mostrarMensagemConsulta('Erro ao gerar link público do extrato.', 'erro');
+            });
         }
-        telefone = telefone.replace(/\D/g, '');
-        if (telefone.length < 10) {
-            mostrarMensagemConsulta('Telefone inválido.', 'erro');
-            return;
-        }
-    }
-    
-    // Gerar link do WhatsApp
-    const mensagem = encodeURIComponent(`Olá! Segue o extrato de IPTU do contrato ${contrato}.\n\nCliente: ${cliente}`);
-    const urlWhatsApp = `https://wa.me/55${telefone}?text=${mensagem}`;
-    
-    // Abrir WhatsApp Web
-    window.open(urlWhatsApp, '_blank');
-    
-    // Também gerar PDF para anexar
-    setTimeout(() => {
-        gerarPDFExtrato(params);
-    }, 500);
+    });
 }
 
 function gerarHTMLExtrato(cobrancas, empreendimentoNome, cliente, contrato, dataCalculo) {
@@ -9185,1374 +9511,6 @@ function importarClientes(diretorio, arquivo, delimitador, primeiraLinhaCabecalh
             btnImportar.disabled = false;
             btnImportar.textContent = '📥 Importar Clientes';
         });
-}
-
-// ========== Baixa Manual (trabalha diretamente com tabela cobranca) ==========
-function inicializarBaixaManual() {
-    const tabelaBody = document.getElementById('tbody-baixa-manual');
-    if (!tabelaBody) return;
-
-    let cobrancaSelecionada = null;
-
-    // Carregar empreendimentos
-    carregarEmpreendimentosSelectBaixaManual();
-
-    // Quando selecionar empreendimento, filtrar módulos
-    const selectEmp = document.getElementById('bm-empreendimento');
-    if (selectEmp) {
-        selectEmp.addEventListener('change', function() {
-            const empId = this.value;
-            carregarModulosSelectBaixaManual(empId);
-            const campoContrato = document.getElementById('bm-contrato');
-            if (campoContrato) {
-                campoContrato.value = '';
-                campoContrato.style.borderColor = '#ccc';
-            }
-        });
-    }
-
-    // Quando selecionar módulo, limpar validação do contrato
-    const selectMod = document.getElementById('bm-modulo');
-    if (selectMod) {
-        selectMod.addEventListener('change', function() {
-            const campoContrato = document.getElementById('bm-contrato');
-            if (campoContrato) {
-                campoContrato.style.borderColor = '#ccc';
-            }
-        });
-    }
-
-    // Validação do campo contrato ao perder o foco ou pressionar Enter
-    const campoContrato = document.getElementById('bm-contrato');
-    if (campoContrato) {
-        campoContrato.addEventListener('blur', function() {
-            if (this.value.trim()) {
-                validarContratoBaixaManual();
-            } else {
-                this.style.borderColor = '#ccc';
-            }
-        });
-        
-        campoContrato.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                if (this.value.trim()) {
-                    validarContratoBaixaManual();
-                }
-            }
-        });
-
-        campoContrato.addEventListener('input', function() {
-            // Resetar cor da borda enquanto digita
-            if (this.style.borderColor === '#dc3545' || this.style.borderColor === '#28a745') {
-                this.style.borderColor = '#ccc';
-            }
-        });
-    }
-
-    // Preencher data de pagamento e baixa com hoje
-    const hoje = new Date();
-    const dataFormatada = hoje.toISOString().split('T')[0];
-    const campoDtPagtoInit = document.getElementById('bm-dt-pagto');
-    const campoDataBaixa = document.getElementById('bm-data-baixa');
-    if (campoDtPagtoInit) campoDtPagtoInit.value = dataFormatada;
-    if (campoDataBaixa) campoDataBaixa.value = dataFormatada;
-
-    // Botão Pesquisar Contrato
-    const btnPesquisarContrato = document.getElementById('btn-pesquisar-contrato-bm');
-    if (btnPesquisarContrato) {
-        btnPesquisarContrato.addEventListener('click', function() {
-            pesquisarContratoBaixaManual();
-        });
-    }
-
-    // Radio buttons para tipo de operação
-    const radioBaixar = document.getElementById('bm-tipo-baixar');
-    const radioEstornar = document.getElementById('bm-tipo-estornar');
-    
-    // Função para revalidar título quando o tipo de operação mudar
-    function revalidarTituloSePreenchido() {
-        const numTitulo = document.getElementById('bm-num-titulo').value.trim();
-        if (numTitulo) {
-            validarTituloBaixaManual();
-        }
-    }
-    
-    if (radioBaixar) {
-        radioBaixar.addEventListener('change', function() {
-            if (this.checked) {
-                revalidarTituloSePreenchido();
-            }
-        });
-    }
-    if (radioEstornar) {
-        radioEstornar.addEventListener('change', function() {
-            if (this.checked) {
-                revalidarTituloSePreenchido();
-            }
-        });
-    }
-
-    // Validação do campo Nº do Título
-    const campoNumTitulo = document.getElementById('bm-num-titulo');
-    if (campoNumTitulo) {
-        campoNumTitulo.addEventListener('blur', function() {
-            if (this.value.trim()) {
-                validarTituloBaixaManual();
-            }
-        });
-        
-        campoNumTitulo.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                if (this.value.trim()) {
-                    validarTituloBaixaManual();
-                }
-            }
-        });
-
-        // Ocultar mensagem de erro quando começar a digitar
-        campoNumTitulo.addEventListener('input', function() {
-            const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
-            if (msgErroTitulo) {
-                msgErroTitulo.style.display = 'none';
-                msgErroTitulo.textContent = '';
-            }
-            // Resetar cor da borda enquanto digita
-            if (this.style.borderColor === '#dc3545' || this.style.borderColor === '#28a745') {
-                this.style.borderColor = '#ccc';
-            }
-        });
-    }
-
-    // Recalcular juros e multas quando a data de pagamento mudar
-    const campoDtPagtoRecalc = document.getElementById('bm-dt-pagto');
-    if (campoDtPagtoRecalc) {
-        campoDtPagtoRecalc.addEventListener('change', function() {
-            const numTitulo = document.getElementById('bm-num-titulo').value.trim();
-            if (numTitulo) {
-                // Revalidar título para recalcular juros e multas com nova data
-                validarTituloBaixaManual();
-            }
-        });
-    }
-
-    // Calcular valor a pagar automaticamente
-    const camposValor = ['bm-valor-parcela', 'bm-multa', 'bm-juros', 'bm-tarifa-bancaria', 'bm-desconto'];
-    camposValor.forEach(id => {
-        const campo = document.getElementById(id);
-        if (campo) {
-            campo.addEventListener('input', calcularValorAPagar);
-        }
-    });
-
-    // Botão Salvar
-    const btnSalvarBaixa = document.getElementById('btn-salvar-baixa-manual');
-    if (btnSalvarBaixa) {
-        btnSalvarBaixa.addEventListener('click', function() {
-            salvarBaixaManual();
-        });
-    }
-
-    function limparFormularioBaixa() {
-        document.getElementById('bm-num-titulo').value = '';
-        document.getElementById('bm-dt-pagto').value = dataFormatada;
-        document.getElementById('bm-data-baixa').value = dataFormatada;
-        document.getElementById('bm-valor-parcela').value = '';
-        document.getElementById('bm-multa').value = '';
-        document.getElementById('bm-juros').value = '';
-        document.getElementById('bm-tarifa-bancaria').value = '';
-        document.getElementById('bm-desconto').value = '';
-        document.getElementById('bm-valor-a-pagar').value = '0,00';
-        document.getElementById('bm-forma-pagto').value = '';
-        document.getElementById('bm-local-pg').value = '';
-        document.getElementById('bm-observacao').value = '';
-        
-        // Limpar mensagem de erro do título
-        const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
-        if (msgErroTitulo) {
-            msgErroTitulo.style.display = 'none';
-            msgErroTitulo.textContent = '';
-        }
-        
-        // Resetar estilo dos campos
-        if (campoContrato) {
-            campoContrato.style.borderColor = '#ccc';
-        }
-        if (campoNumTitulo) {
-            campoNumTitulo.style.borderColor = '#ccc';
-        }
-    }
-
-    function calcularValorAPagar() {
-        const valorParcela = parseFloat(document.getElementById('bm-valor-parcela').value.replace(',', '.')) || 0;
-        const multa = parseFloat(document.getElementById('bm-multa').value.replace(',', '.')) || 0;
-        const juros = parseFloat(document.getElementById('bm-juros').value.replace(',', '.')) || 0;
-        const tarifaBancaria = parseFloat(document.getElementById('bm-tarifa-bancaria').value.replace(',', '.')) || 0;
-        const desconto = parseFloat(document.getElementById('bm-desconto').value.replace(',', '.')) || 0;
-
-        const total = valorParcela + multa + juros + tarifaBancaria - desconto;
-        document.getElementById('bm-valor-a-pagar').value = total.toFixed(2).replace('.', ',');
-    }
-
-    function validarTituloBaixaManual() {
-        const empreendimentoId = document.getElementById('bm-empreendimento').value;
-        const moduloId = document.getElementById('bm-modulo').value;
-        const contrato = document.getElementById('bm-contrato').value.trim();
-        const numTitulo = document.getElementById('bm-num-titulo').value.trim();
-        const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
-
-        // Limpar mensagem de erro anterior
-        if (msgErroTitulo) {
-            msgErroTitulo.style.display = 'none';
-            msgErroTitulo.textContent = '';
-        }
-
-        if (!empreendimentoId || !moduloId || !contrato) {
-            mostrarMensagemBaixaManual('Selecione Empreendimento, Módulo e Contrato antes de validar o título.', 'erro');
-            return;
-        }
-
-        if (!numTitulo) {
-            return;
-        }
-
-        const params = new URLSearchParams();
-        params.append('action', 'buscar-por-titulo');
-        params.append('empreendimento_id', empreendimentoId);
-        params.append('modulo_id', moduloId);
-        params.append('contrato', contrato);
-        params.append('titulo', numTitulo);
-
-        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.sucesso || !data.cobranca) {
-                    // Mostrar mensagem de erro na frente do campo título
-                    if (msgErroTitulo) {
-                        msgErroTitulo.textContent = 'Título não encontrado';
-                        msgErroTitulo.style.display = 'block';
-                    }
-                    limparFormularioBaixa();
-                    campoNumTitulo.style.borderColor = '#dc3545';
-                    campoNumTitulo.focus();
-                    return;
-                }
-
-                const cobranca = data.cobranca;
-                
-                // Verificar se está em modo estorno
-                const tipoOperacao = document.querySelector('input[name="bm-tipo-operacao-radio"]:checked')?.value;
-                
-                // VALIDAÇÃO DE DUPLICIDADE: Verificar se o título já foi baixado
-                if (cobranca.pago === 'S' && tipoOperacao === 'baixar') {
-                    // Título já está baixado e usuário está tentando baixar novamente
-                    const mensagemErro = 'Atenção: Este título já foi baixado anteriormente e não pode ser processado de novo.';
-                    
-                    // Mostrar mensagem de erro na frente do campo título
-                    if (msgErroTitulo) {
-                        msgErroTitulo.textContent = mensagemErro;
-                        msgErroTitulo.style.display = 'block';
-                        msgErroTitulo.style.color = '#dc3545';
-                        msgErroTitulo.style.fontWeight = 'bold';
-                    }
-                    
-                    // Mostrar mensagem geral
-                    mostrarMensagemBaixaManual(mensagemErro, 'erro');
-                    
-                    // Limpar formulário e bloquear campo
-                    limparFormularioBaixa();
-                    campoNumTitulo.style.borderColor = '#dc3545';
-                    campoNumTitulo.focus();
-                    
-                    // Sugerir usar modo estorno
-                    document.getElementById('bm-tipo-estornar').checked = true;
-                    
-                    return; // Bloquear o avanço
-                }
-                
-                if (tipoOperacao === 'estornar') {
-                    // Modo estorno: preencher todos os campos com os dados da cobrança
-                    document.getElementById('bm-valor-parcela').value = cobranca.valor_mensal ? parseFloat(cobranca.valor_mensal).toFixed(2).replace('.', ',') : '0,00';
-                    document.getElementById('bm-dt-pagto').value = cobranca.datapagamento ? cobranca.datapagamento.split('T')[0] : '';
-                    document.getElementById('bm-data-baixa').value = cobranca.databaixa ? cobranca.databaixa.split('T')[0] : '';
-                    document.getElementById('bm-multa').value = cobranca.multas ? parseFloat(cobranca.multas).toFixed(2).replace('.', ',') : '0,00';
-                    document.getElementById('bm-juros').value = cobranca.juros ? parseFloat(cobranca.juros).toFixed(2).replace('.', ',') : '0,00';
-                    document.getElementById('bm-tarifa-bancaria').value = cobranca.tarifa_bancaria ? parseFloat(cobranca.tarifa_bancaria).toFixed(2).replace('.', ',') : '0,00';
-                    document.getElementById('bm-desconto').value = cobranca.desconto ? parseFloat(cobranca.desconto).toFixed(2).replace('.', ',') : '0,00';
-                    document.getElementById('bm-forma-pagto').value = cobranca.forma_pagamento || '';
-                    document.getElementById('bm-local-pg').value = cobranca.local_pagamento || '';
-                    document.getElementById('bm-observacao').value = cobranca.observacao || '';
-                    calcularValorAPagar();
-                } else {
-                    // Modo baixar: preencher apenas valor mensal e calcular juros/multas se necessário
-                    document.getElementById('bm-valor-parcela').value = cobranca.valor_mensal ? parseFloat(cobranca.valor_mensal).toFixed(2).replace('.', ',') : '0,00';
-                    
-                    // Verificar se está em atraso
-                    const dtPagto = document.getElementById('bm-dt-pagto').value;
-                    if (cobranca.datavencimento && dtPagto) {
-                        const dataVencimento = new Date(cobranca.datavencimento);
-                        const dataPagamento = new Date(dtPagto);
-                        
-                        if (dataVencimento < dataPagamento) {
-                            mostrarMensagemBaixaManual('⚠️ Parcela em atraso! Calculando juros e multas...', 'erro');
-                            
-                            // Calcular juros e multas
-                            calcularJurosMultasBaixaManual(cobranca, dtPagto);
-                        } else {
-                            // Limpar juros e multas se não estiver em atraso
-                            document.getElementById('bm-multa').value = '0,00';
-                            document.getElementById('bm-juros').value = '0,00';
-                            calcularValorAPagar();
-                        }
-                    } else {
-                        calcularValorAPagar();
-                    }
-                }
-                
-                // Limpar mensagem de erro e marcar como válido
-                if (msgErroTitulo) {
-                    msgErroTitulo.style.display = 'none';
-                    msgErroTitulo.textContent = '';
-                }
-                campoNumTitulo.style.borderColor = '#28a745';
-            })
-            .catch(err => {
-                console.error(err);
-                if (msgErroTitulo) {
-                    msgErroTitulo.textContent = 'Erro ao validar título';
-                    msgErroTitulo.style.display = 'block';
-                }
-                mostrarMensagemBaixaManual('Erro ao validar título.', 'erro');
-            });
-    }
-
-    function calcularJurosMultasBaixaManual(cobranca, dataPagamento) {
-        const params = new URLSearchParams();
-        params.append('action', 'calcular-juros-multas');
-        params.append('cobranca_id', cobranca.id);
-        params.append('data_pagamento', dataPagamento);
-
-        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (data.sucesso) {
-                    document.getElementById('bm-multa').value = data.multa ? parseFloat(data.multa).toFixed(2).replace('.', ',') : '0,00';
-                    document.getElementById('bm-juros').value = data.juros ? parseFloat(data.juros).toFixed(2).replace('.', ',') : '0,00';
-                    calcularValorAPagar();
-                } else {
-                    // Calcular localmente em caso de erro
-                    const valorMensal = parseFloat(cobranca.valor_mensal || 0);
-                    const multa = valorMensal * 0.02; // 2% de multa
-                    const diasAtraso = Math.ceil((new Date(dataPagamento) - new Date(cobranca.datavencimento)) / (1000 * 60 * 60 * 24));
-                    const juros = valorMensal * (0.033 / 100) * diasAtraso; // 0,033% ao dia
-                    
-                    document.getElementById('bm-multa').value = multa.toFixed(2).replace('.', ',');
-                    document.getElementById('bm-juros').value = juros.toFixed(2).replace('.', ',');
-                    calcularValorAPagar();
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                // Calcular localmente em caso de erro
-                const valorMensal = parseFloat(cobranca.valor_mensal || 0);
-                const multa = valorMensal * 0.02; // 2% de multa
-                const diasAtraso = Math.ceil((new Date(dataPagamento) - new Date(cobranca.datavencimento)) / (1000 * 60 * 60 * 24));
-                const juros = valorMensal * (0.033 / 100) * diasAtraso; // 0,033% ao dia
-                
-                document.getElementById('bm-multa').value = multa.toFixed(2).replace('.', ',');
-                document.getElementById('bm-juros').value = juros.toFixed(2).replace('.', ',');
-                calcularValorAPagar();
-            });
-    }
-
-    function validarContratoBaixaManual() {
-        const empreendimentoId = document.getElementById('bm-empreendimento').value;
-        const moduloId = document.getElementById('bm-modulo').value;
-        const contrato = document.getElementById('bm-contrato').value.trim();
-
-        if (!empreendimentoId || !moduloId) {
-            return; // Não validar se não tiver empreendimento e módulo selecionados
-        }
-
-        if (!contrato) {
-            return; // Não validar se o campo estiver vazio
-        }
-
-        const params = new URLSearchParams();
-        params.append('action', 'validar-contrato');
-        params.append('empreendimento_id', empreendimentoId);
-        params.append('modulo_id', moduloId);
-        params.append('contrato', contrato);
-
-        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.sucesso) {
-                    mostrarMensagemBaixaManual(data.mensagem || 'Contrato não encontrado. Verifique se o número está correto.', 'erro');
-                    campoContrato.style.borderColor = '#dc3545';
-                    campoContrato.focus();
-                } else {
-                    campoContrato.style.borderColor = '#28a745';
-                    mostrarMensagemBaixaManual('Contrato válido.', 'sucesso');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                mostrarMensagemBaixaManual('Erro ao validar contrato.', 'erro');
-            });
-    }
-
-    function pesquisarContratoBaixaManual() {
-        const empreendimentoId = document.getElementById('bm-empreendimento').value;
-        const moduloId = document.getElementById('bm-modulo').value;
-        const contrato = document.getElementById('bm-contrato').value.trim();
-
-        if (!empreendimentoId || !moduloId || !contrato) {
-            mostrarMensagemBaixaManual('Selecione Empreendimento, Módulo e digite o Contrato.', 'erro');
-            return;
-        }
-
-        const params = new URLSearchParams();
-        params.append('action', 'pesquisar-contrato-completo');
-        params.append('empreendimento_id', empreendimentoId);
-        params.append('modulo_id', moduloId);
-        params.append('contrato', contrato);
-
-        mostrarMensagemBaixaManual('Pesquisando contrato...', 'info');
-
-        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.sucesso) {
-                    mostrarMensagemBaixaManual(data.mensagem || 'Contrato não encontrado.', 'erro');
-                    tabelaBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px; border: 1px solid #ddd;">Nenhuma parcela encontrada.</td></tr>';
-                    return;
-                }
-
-                const cobrancas = data.cobrancas || [];
-                if (cobrancas.length === 0) {
-                    mostrarMensagemBaixaManual('Nenhuma parcela encontrada para este contrato.', 'erro');
-                    tabelaBody.innerHTML = '<tr><td colspan="9" style="text-align: center; padding: 20px; border: 1px solid #ddd;">Nenhuma parcela encontrada.</td></tr>';
-                    return;
-                }
-
-                exibirCobrancasNoGrid(cobrancas);
-                mostrarMensagemBaixaManual(`${cobrancas.length} parcela(s) encontrada(s) para o contrato ${contrato}.`, 'sucesso');
-            })
-            .catch(err => {
-                console.error(err);
-                mostrarMensagemBaixaManual('Erro ao pesquisar contrato.', 'erro');
-            });
-    }
-
-    function salvarBaixaManual() {
-        const empreendimentoId = document.getElementById('bm-empreendimento').value;
-        const moduloId = document.getElementById('bm-modulo').value;
-        const contrato = document.getElementById('bm-contrato').value.trim();
-        const numTitulo = document.getElementById('bm-num-titulo').value.trim();
-        const tipoOperacao = document.querySelector('input[name="bm-tipo-operacao-radio"]:checked')?.value;
-
-        // Validar campos obrigatórios
-        if (!empreendimentoId || !moduloId || !contrato || !numTitulo) {
-            mostrarMensagemBaixaManual('Preencha todos os campos obrigatórios (Empreendimento, Módulo, Contrato e Nº do Título).', 'erro');
-            return;
-        }
-
-        // Verificar se uma opção está marcada
-        if (!tipoOperacao || !['baixar', 'estornar'].includes(tipoOperacao)) {
-            mostrarMensagemBaixaManual('Selecione a opção "Baixar Parcela" ou "Estornar Parcela" para salvar.', 'erro');
-            return;
-        }
-
-        // Buscar cobrança pelo título
-        const params = new URLSearchParams();
-        params.append('action', 'buscar-por-titulo');
-        params.append('empreendimento_id', empreendimentoId);
-        params.append('modulo_id', moduloId);
-        params.append('contrato', contrato);
-        params.append('titulo', numTitulo);
-
-        fetch(`/SISIPTU/php/baixa_manual_api.php?${params.toString()}`)
-            .then(r => r.json())
-            .then(data => {
-                if (!data.sucesso || !data.cobranca) {
-                    mostrarMensagemBaixaManual('Título não encontrado. Verifique se o número está correto.', 'erro');
-                    const msgErroTitulo = document.getElementById('bm-titulo-msg-erro');
-                    if (msgErroTitulo) {
-                        msgErroTitulo.textContent = 'Título não encontrado';
-                        msgErroTitulo.style.display = 'block';
-                    }
-                    return;
-                }
-
-                const cobrancaId = data.cobranca.id;
-                
-                // Coletar todos os valores do formulário
-                const dtPagto = document.getElementById('bm-dt-pagto').value;
-                const dataBaixa = document.getElementById('bm-data-baixa').value;
-                const valorParcela = document.getElementById('bm-valor-parcela').value.replace(',', '.') || '0';
-                const multa = document.getElementById('bm-multa').value.replace(',', '.') || '0';
-                const juros = document.getElementById('bm-juros').value.replace(',', '.') || '0';
-                const tarifaBancaria = document.getElementById('bm-tarifa-bancaria').value.replace(',', '.') || '0';
-                const desconto = document.getElementById('bm-desconto').value.replace(',', '.') || '0';
-                const formaPagto = document.getElementById('bm-forma-pagto').value;
-                const localPg = document.getElementById('bm-local-pg').value;
-                const observacao = document.getElementById('bm-observacao').value.trim();
-
-                const formData = new FormData();
-                formData.append('action', 'salvar-baixa-completa');
-                formData.append('cobranca_id', cobrancaId);
-                formData.append('tipo_operacao', tipoOperacao);
-                formData.append('data_pagamento', dtPagto);
-                formData.append('data_baixa', dataBaixa);
-                formData.append('valor_parcela', valorParcela);
-                formData.append('multa', multa);
-                formData.append('juros', juros);
-                formData.append('tarifa_bancaria', tarifaBancaria);
-                formData.append('desconto', desconto);
-                formData.append('forma_pagamento', formaPagto);
-                formData.append('local_pagamento', localPg);
-                formData.append('observacao', observacao);
-
-                return fetch('/SISIPTU/php/baixa_manual_api.php', {
-                    method: 'POST',
-                    body: formData
-                });
-            })
-            .then(r => r.json())
-            .then(data => {
-                if (data.sucesso) {
-                    const mensagem = tipoOperacao === 'estornar' 
-                        ? (data.mensagem || 'Parcela estornada com sucesso!')
-                        : (data.mensagem || 'Parcela baixada com sucesso!');
-                    mostrarMensagemBaixaManual(mensagem, 'sucesso');
-                    limparFormularioBaixa();
-                    pesquisarContratoBaixaManual();
-                } else {
-                    mostrarMensagemBaixaManual(data.mensagem || 'Erro ao salvar baixa.', 'erro');
-                }
-            })
-            .catch(err => {
-                console.error(err);
-                mostrarMensagemBaixaManual('Erro ao salvar baixa.', 'erro');
-            });
-    }
-
-    function excluirBaixaManual(cobrancaId) {
-        const formData = new FormData();
-        formData.append('action', 'baixar-estornar');
-        formData.append('cobranca_id', cobrancaId);
-        formData.append('tipo_operacao', 'estornar');
-        formData.append('data_pagamento', '');
-        formData.append('data_baixa', '');
-        formData.append('observacao', 'Exclusão de baixa manual');
-
-        fetch('/SISIPTU/php/baixa_manual_api.php', {
-            method: 'POST',
-            body: formData
-        })
-        .then(r => r.json())
-        .then(data => {
-            if (data.sucesso) {
-                mostrarMensagemBaixaManual('Baixa excluída (estornada) com sucesso!', 'sucesso');
-                limparFormularioBaixa();
-                cobrancaSelecionada = null;
-                pesquisarContratoBaixaManual();
-            } else {
-                mostrarMensagemBaixaManual(data.mensagem || 'Erro ao excluir baixa.', 'erro');
-            }
-        })
-        .catch(err => {
-            console.error(err);
-            mostrarMensagemBaixaManual('Erro ao excluir baixa.', 'erro');
-        });
-    }
-
-    function exibirCobrancasNoGrid(cobrancas) {
-        const tabelaBody = document.getElementById('tbody-baixa-manual');
-        if (!tabelaBody) return;
-
-        tabelaBody.innerHTML = '';
-        cobrancas.forEach(c => {
-            const tr = document.createElement('tr');
-            const valorTotal = calcularValorTotalCobrancaBaixa(c);
-            const statusPago = c.pago === 'S' ? '<span style="color: green; font-weight: bold;">Pago</span>' : '<span style="color: red; font-weight: bold;">Não Pago</span>';
-            
-            tr.style.cursor = 'pointer';
-            tr.onclick = function() {
-                // Remover seleção anterior
-                tabelaBody.querySelectorAll('tr').forEach(row => {
-                    row.style.backgroundColor = '';
-                });
-                // Selecionar linha atual
-                tr.style.backgroundColor = '#e3f2fd';
-                
-                // Preencher formulário
-                preencherFormularioBaixa(c);
-                cobrancaSelecionada = c;
-            };
-            
-            tr.innerHTML = `
-                <td style="padding: 8px; border: 1px solid #ddd;">${c.titulo || '-'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">${c.cliente_nome || '-'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${c.valor_mensal ? parseFloat(c.valor_mensal).toFixed(2).replace('.', ',') : '0,00'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${c.multas ? parseFloat(c.multas).toFixed(2).replace('.', ',') : '0,00'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${c.juros ? parseFloat(c.juros).toFixed(2).replace('.', ',') : '0,00'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd; text-align: right;">${valorTotal}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">${c.datavencimento ? formatarData(c.datavencimento) : '-'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">${c.datapagamento ? formatarData(c.datapagamento) : '-'}</td>
-                <td style="padding: 8px; border: 1px solid #ddd;">${c.databaixa ? formatarData(c.databaixa) : '-'}</td>
-            `;
-            tabelaBody.appendChild(tr);
-        });
-    }
-
-    function preencherFormularioBaixa(c) {
-        document.getElementById('bm-num-titulo').value = c.titulo || '';
-        document.getElementById('bm-dt-pagto').value = c.datapagamento ? c.datapagamento.split('T')[0] : new Date().toISOString().split('T')[0];
-        document.getElementById('bm-data-baixa').value = c.databaixa ? c.databaixa.split('T')[0] : new Date().toISOString().split('T')[0];
-        document.getElementById('bm-valor-parcela').value = c.valor_mensal ? parseFloat(c.valor_mensal).toFixed(2).replace('.', ',') : '';
-        document.getElementById('bm-multa').value = c.multas ? parseFloat(c.multas).toFixed(2).replace('.', ',') : '';
-        document.getElementById('bm-juros').value = c.juros ? parseFloat(c.juros).toFixed(2).replace('.', ',') : '';
-        document.getElementById('bm-tarifa-bancaria').value = '';
-        document.getElementById('bm-desconto').value = '';
-        document.getElementById('bm-observacao').value = c.observacao || '';
-        
-        // Selecionar radio button baseado no status
-        if (c.pago === 'S') {
-            document.getElementById('bm-tipo-estornar').checked = true;
-        } else {
-            document.getElementById('bm-tipo-baixar').checked = true;
-        }
-        
-        calcularValorAPagar();
-    }
-
-    function calcularValorTotalCobrancaBaixa(c) {
-        const valorMensal = parseFloat(c.valor_mensal || 0);
-        const multas = parseFloat(c.multas || 0);
-        const juros = parseFloat(c.juros || 0);
-        const total = valorMensal + multas + juros;
-        return total.toFixed(2).replace('.', ',');
-    }
-}
-
-// ========== COBRANÇA AUTOMÁTICA ==========
-// Variável global para armazenar os títulos carregados
-let titulosCobrancaAutomatica = [];
-
-function inicializarCobrancaAutomatica() {
-    carregarEmpreendimentosSelectCobrancaAutomatica();
-    
-    // Event listener para botão pesquisar
-    const btnPesquisar = document.getElementById('btn-pesquisar-titulos');
-    if (btnPesquisar) {
-        btnPesquisar.addEventListener('click', function() {
-            pesquisarTitulosCobrancaAutomatica();
-        });
-    }
-    
-    // Event listener para botão processar
-    const btnProcessar = document.getElementById('btn-processar-cobranca');
-    if (btnProcessar) {
-        btnProcessar.addEventListener('click', function() {
-            processarCobrancaAutomatica();
-        });
-    }
-    
-    // Event listeners para seleção
-    const checkTodos = document.getElementById('check-todos-titulos');
-    if (checkTodos) {
-        checkTodos.addEventListener('change', function() {
-            const checked = this.checked;
-            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
-                cb.checked = checked;
-            });
-            atualizarBotaoProcessar();
-        });
-    }
-    
-    const btnSelecionarTodos = document.getElementById('btn-selecionar-todos');
-    if (btnSelecionarTodos) {
-        btnSelecionarTodos.addEventListener('click', function() {
-            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
-                cb.checked = true;
-            });
-            if (checkTodos) checkTodos.checked = true;
-            atualizarBotaoProcessar();
-        });
-    }
-    
-    const btnDeselecionarTodos = document.getElementById('btn-deselecionar-todos');
-    if (btnDeselecionarTodos) {
-        btnDeselecionarTodos.addEventListener('click', function() {
-            document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
-                cb.checked = false;
-            });
-            if (checkTodos) checkTodos.checked = false;
-            atualizarBotaoProcessar();
-        });
-    }
-    
-    // Event listeners para atualizar grid quando filtros mudarem
-    const selectEmpreendimento = document.getElementById('ca-empreendimento');
-    const inputPeriodoInicio = document.getElementById('ca-periodo-inicio');
-    const inputPeriodoFim = document.getElementById('ca-periodo-fim');
-    
-    if (selectEmpreendimento) {
-        selectEmpreendimento.addEventListener('change', function() {
-            const empreendimentoId = this.value;
-            if (empreendimentoId) {
-                carregarInfoBancoEmpreendimento(empreendimentoId);
-            } else {
-                ocultarInfoBanco();
-            }
-            // Limpar grid quando mudar empreendimento
-            limparGridCobrancaAutomatica();
-        });
-    }
-    
-    if (inputPeriodoInicio) {
-        inputPeriodoInicio.addEventListener('change', function() {
-            limparGridCobrancaAutomatica();
-        });
-    }
-    
-    if (inputPeriodoFim) {
-        inputPeriodoFim.addEventListener('change', function() {
-            limparGridCobrancaAutomatica();
-        });
-    }
-}
-
-function atualizarBotaoProcessar() {
-    const btnProcessar = document.getElementById('btn-processar-cobranca');
-    if (!btnProcessar) return;
-    
-    const selecionados = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]:checked');
-    btnProcessar.disabled = selecionados.length === 0;
-}
-
-function carregarInfoBancoEmpreendimento(empreendimentoId) {
-    if (!empreendimentoId) {
-        ocultarInfoBanco();
-        return;
-    }
-    
-    // Buscar informações do empreendimento
-    fetch(`/SISIPTU/php/empreendimentos_api.php?action=get&id=${empreendimentoId}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.sucesso && data.empreendimento) {
-                const bancoId = data.empreendimento.banco_id;
-                
-                if (bancoId) {
-                    // Buscar informações do banco
-                    fetch(`/SISIPTU/php/bancos_api.php?action=get&id=${bancoId}`)
-                        .then(r => r.json())
-                        .then(dataBanco => {
-                            if (dataBanco.sucesso && dataBanco.banco) {
-                                exibirInfoBanco(dataBanco.banco);
-                            } else {
-                                ocultarInfoBanco();
-                            }
-                        })
-                        .catch(err => {
-                            console.error('Erro ao buscar informações do banco:', err);
-                            ocultarInfoBanco();
-                        });
-                } else {
-                    ocultarInfoBanco();
-                }
-            } else {
-                ocultarInfoBanco();
-            }
-        })
-        .catch(err => {
-            console.error('Erro ao buscar informações do empreendimento:', err);
-            ocultarInfoBanco();
-        });
-}
-
-function exibirInfoBanco(banco) {
-    const infoBancoDiv = document.getElementById('ca-info-banco');
-    const bancoNomeDiv = document.getElementById('ca-banco-nome');
-    const bancoAgenciaDiv = document.getElementById('ca-banco-agencia');
-    const bancoContaDiv = document.getElementById('ca-banco-conta');
-    const caminhoRemessaDiv = document.getElementById('ca-caminho-remessa');
-    
-    if (infoBancoDiv && bancoNomeDiv && bancoAgenciaDiv && bancoContaDiv && caminhoRemessaDiv) {
-        // Exibir nome do banco (prioridade: banco > apelido > id)
-        const nomeBanco = banco.banco || banco.apelido || `Banco ID ${banco.id}`;
-        bancoNomeDiv.textContent = nomeBanco;
-        
-        // Exibir agência
-        const agencia = banco.agencia || 'Não informado';
-        bancoAgenciaDiv.textContent = agencia;
-        
-        // Exibir conta corrente
-        const conta = banco.conta || 'Não informado';
-        bancoContaDiv.textContent = conta;
-        
-        // Exibir caminho da remessa
-        const caminhoRemessa = banco.caminho_remessa || 'Não informado';
-        caminhoRemessaDiv.textContent = caminhoRemessa;
-        
-        // Mostrar a seção
-        infoBancoDiv.style.display = 'block';
-    }
-}
-
-function ocultarInfoBanco() {
-    const infoBancoDiv = document.getElementById('ca-info-banco');
-    if (infoBancoDiv) {
-        infoBancoDiv.style.display = 'none';
-    }
-    
-    const bancoNomeDiv = document.getElementById('ca-banco-nome');
-    const bancoAgenciaDiv = document.getElementById('ca-banco-agencia');
-    const bancoContaDiv = document.getElementById('ca-banco-conta');
-    const caminhoRemessaDiv = document.getElementById('ca-caminho-remessa');
-    if (bancoNomeDiv) bancoNomeDiv.textContent = '-';
-    if (bancoAgenciaDiv) bancoAgenciaDiv.textContent = '-';
-    if (bancoContaDiv) bancoContaDiv.textContent = '-';
-    if (caminhoRemessaDiv) caminhoRemessaDiv.textContent = '-';
-}
-
-function limparGridCobrancaAutomatica() {
-    const tabelaBody = document.getElementById('tabela-cobranca-automatica-body');
-    if (tabelaBody) {
-        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Selecione o empreendimento e o período de referência, depois clique em "Pesquisar Títulos".</td></tr>';
-    }
-    titulosCobrancaAutomatica = [];
-    atualizarBotaoProcessar();
-}
-
-function pesquisarTitulosCobrancaAutomatica() {
-    const empreendimentoId = document.getElementById('ca-empreendimento')?.value || '';
-    const periodoInicio = document.getElementById('ca-periodo-inicio')?.value || '';
-    const periodoFim = document.getElementById('ca-periodo-fim')?.value || '';
-    const titulo = document.getElementById('ca-titulo')?.value.trim() || '';
-    const contrato = document.getElementById('ca-contrato')?.value.trim() || '';
-    const tabelaBody = document.getElementById('tabela-cobranca-automatica-body');
-    const mensagemDiv = document.getElementById('ca-mensagem');
-    
-    // Validações
-    if (!empreendimentoId) {
-        mostrarMensagemCobrancaAutomatica('Selecione o empreendimento.', 'erro');
-        return;
-    }
-    
-    if (!periodoInicio || !periodoFim) {
-        mostrarMensagemCobrancaAutomatica('Informe o período de referência (data início e data fim).', 'erro');
-        return;
-    }
-    
-    // Mostrar loading
-    if (tabelaBody) {
-        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Carregando...</td></tr>';
-    }
-    
-    // Construir parâmetros
-    const params = new URLSearchParams();
-    params.append('action', 'pesquisar-titulos');
-    params.append('empreendimento_id', empreendimentoId);
-    params.append('periodo_inicio', periodoInicio);
-    params.append('periodo_fim', periodoFim);
-    if (titulo) params.append('titulo', titulo);
-    if (contrato) params.append('contrato', contrato);
-    
-    fetch(`/SISIPTU/php/cobranca_automatica_api.php?${params.toString()}`)
-        .then(r => r.json())
-        .then(data => {
-            if (data.sucesso) {
-                // Não sobrescrever mensagem de sucesso do processamento
-                // Só mostrar mensagem de pesquisa se não houver mensagem de processamento
-                const mensagemAtual = document.getElementById('ca-mensagem');
-                if (!mensagemAtual || mensagemAtual.style.display === 'none' || !mensagemAtual.textContent.includes('Processados')) {
-                    mostrarMensagemCobrancaAutomatica(`Encontrados ${data.total || 0} título(s).`, 'sucesso');
-                }
-                
-                // Armazenar títulos globalmente
-                titulosCobrancaAutomatica = data.titulos || [];
-                
-                // Atualizar grid
-                if (tabelaBody) {
-                    if (!data.titulos || data.titulos.length === 0) {
-                        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Nenhum título encontrado para os filtros selecionados.</td></tr>';
-                        atualizarBotaoProcessar();
-                    } else {
-                        let html = '';
-                        data.titulos.forEach((t, index) => {
-                            const vencimento = t.datavencimento ? formatarData(t.datavencimento) : '-';
-                            const valor = parseFloat(t.valor_mensal || 0).toFixed(2).replace('.', ',');
-                            const tituloId = t.id;
-                            
-                            html += `
-                                <tr>
-                                    <td style="text-align: center;">
-                                        <input type="checkbox" data-titulo-id="${tituloId}" data-titulo-index="${index}" style="cursor: pointer;">
-                                    </td>
-                                    <td>${t.titulo || t.id || '-'}</td>
-                                    <td>${t.cliente_nome || '-'}</td>
-                                    <td>${t.parcelamento || '-'}</td>
-                                    <td>${vencimento}</td>
-                                    <td style="text-align: right;">R$ ${valor}</td>
-                                </tr>
-                            `;
-                        });
-                        tabelaBody.innerHTML = html;
-                        
-                        // Adicionar event listeners aos checkboxes
-                        document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]').forEach(cb => {
-                            cb.addEventListener('change', function() {
-                                atualizarCheckTodos();
-                                atualizarBotaoProcessar();
-                            });
-                        });
-                        
-                        atualizarBotaoProcessar();
-                    }
-                }
-            } else {
-                mostrarMensagemCobrancaAutomatica(data.mensagem || 'Erro ao pesquisar títulos.', 'erro');
-                if (tabelaBody) {
-                    tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao pesquisar títulos.</td></tr>';
-                }
-                atualizarBotaoProcessar();
-            }
-        })
-        .catch(err => {
-            console.error('Erro ao pesquisar títulos:', err);
-            mostrarMensagemCobrancaAutomatica('Erro ao pesquisar títulos. Verifique o console para mais detalhes.', 'erro');
-            if (tabelaBody) {
-                tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao pesquisar títulos.</td></tr>';
-            }
-        });
-}
-
-function atualizarCheckTodos() {
-    const checkTodos = document.getElementById('check-todos-titulos');
-    if (!checkTodos) return;
-    
-    const checkboxes = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]');
-    const todosSelecionados = checkboxes.length > 0 && Array.from(checkboxes).every(cb => cb.checked);
-    checkTodos.checked = todosSelecionados;
-}
-
-function processarCobrancaAutomatica() {
-    const selecionados = document.querySelectorAll('#tabela-cobranca-automatica-body input[type="checkbox"][data-titulo-id]:checked');
-    
-    if (selecionados.length === 0) {
-        mostrarMensagemCobrancaAutomatica('Selecione pelo menos um título para processar.', 'erro');
-        return;
-    }
-    
-    // Coletar IDs dos títulos selecionados
-    const titulosIds = Array.from(selecionados).map(cb => {
-        const index = parseInt(cb.getAttribute('data-titulo-index'));
-        return titulosCobrancaAutomatica[index];
-    });
-    
-    // Coletar dados do formulário
-    const empreendimentoId = document.getElementById('ca-empreendimento')?.value || '';
-    const periodoInicio = document.getElementById('ca-periodo-inicio')?.value || '';
-    const periodoFim = document.getElementById('ca-periodo-fim')?.value || '';
-    const remissaoBoletos = document.getElementById('ca-remissao-boletos')?.checked || false;
-    
-    if (!empreendimentoId || !periodoInicio || !periodoFim) {
-        mostrarMensagemCobrancaAutomatica('Preencha todos os campos obrigatórios.', 'erro');
-        return;
-    }
-    
-    // Confirmar processamento
-    const confirmar = confirm(`Deseja processar ${titulosIds.length} título(s) selecionado(s)?`);
-    if (!confirmar) {
-        return;
-    }
-    
-    // Mostrar loading
-    mostrarMensagemCobrancaAutomatica('Processando títulos...', 'info');
-    const btnProcessar = document.getElementById('btn-processar-cobranca');
-    if (btnProcessar) {
-        btnProcessar.disabled = true;
-    }
-    
-    // Preparar dados para envio
-    const dados = {
-        action: 'processar',
-        empreendimento_id: empreendimentoId,
-        periodo_inicio: periodoInicio,
-        periodo_fim: periodoFim,
-        remissao_boletos: remissaoBoletos ? 1 : 0,
-        titulos: titulosIds.map(t => ({
-            id: t.id,
-            titulo: t.titulo || t.id,
-            contrato: t.contrato,
-            cliente_nome: t.cliente_nome,
-            modulo_id: t.modulo_id,
-            valor_mensal: t.valor_mensal,
-            datavencimento: t.datavencimento
-        }))
-    };
-    
-    // Mostrar mensagem de processamento
-    mostrarMensagemCobrancaAutomatica('Processando títulos e gerando arquivo de remessa CNAB...', 'info');
-    
-    fetch('/SISIPTU/php/cobranca_automatica_api.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(dados)
-    })
-    .then(r => {
-        // Verificar se a resposta é JSON válido
-        if (!r.ok) {
-            throw new Error(`Erro HTTP: ${r.status} ${r.statusText}`);
-        }
-        return r.text().then(text => {
-            try {
-                return JSON.parse(text);
-            } catch (e) {
-                console.error('Resposta não é JSON válido:', text);
-                throw new Error('Resposta do servidor não é JSON válido. Verifique os logs do servidor.');
-            }
-        });
-    })
-    .then(data => {
-        if (!data) {
-            throw new Error('Resposta vazia do servidor');
-        }
-        
-        if (data.sucesso) {
-            let mensagem = data.mensagem || `Processados ${titulosIds.length} título(s) com sucesso!`;
-            
-            // Adicionar informação sobre arquivo CNAB se foi gerado
-            if (data.remessa_gerada && data.arquivo_cnab) {
-                mensagem += `\n\n📄 Arquivo CNAB de remessa gerado: ${data.arquivo_cnab}`;
-                if (data.caminho_cnab) {
-                    mensagem += `\n📁 Salvo em: ${data.caminho_cnab}`;
-                }
-            }
-            
-            // Adicionar informações de erros se houver
-            if (data.erros && data.erros.length > 0) {
-                mensagem += `\n\n⚠️ Atenção: ${data.erros.length} erro(s) encontrado(s):`;
-                data.erros.forEach(erro => {
-                    mensagem += `\n   • ${erro}`;
-                });
-            }
-            
-            mostrarMensagemCobrancaAutomatica(mensagem, 'sucesso');
-            
-            // Atualizar grid removendo os processados, mas manter a mensagem
-            setTimeout(() => {
-                // Salvar a mensagem atual antes de pesquisar
-                const mensagemAtual = document.getElementById('ca-mensagem');
-                const mensagemTexto = mensagemAtual ? (mensagemAtual.innerHTML || mensagemAtual.textContent) : '';
-                const mensagemTipo = mensagemAtual ? mensagemAtual.className.replace('mensagem ', '') : '';
-                
-                // Pesquisar títulos (isso pode limpar a mensagem temporariamente)
-                pesquisarTitulosCobrancaAutomatica();
-                
-                // Restaurar a mensagem após a pesquisa
-                setTimeout(() => {
-                    if (mensagemTexto && mensagemAtual) {
-                        mensagemAtual.innerHTML = mensagemTexto;
-                        mensagemAtual.className = `mensagem ${mensagemTipo}`;
-                        mensagemAtual.style.display = 'block';
-                    }
-                }, 500);
-            }, 2000);
-        } else {
-            const mensagemErro = data.mensagem || 'Erro ao processar títulos. Verifique os logs do servidor.';
-            console.error('Erro no processamento:', data);
-            mostrarMensagemCobrancaAutomatica(mensagemErro, 'erro');
-        }
-    })
-    .catch(err => {
-        console.error('Erro ao processar títulos:', err);
-        const mensagemErro = err.message || 'Erro ao processar títulos. Verifique o console e os logs do servidor para mais detalhes.';
-        mostrarMensagemCobrancaAutomatica(mensagemErro, 'erro');
-    })
-    .finally(() => {
-        if (btnProcessar) {
-            atualizarBotaoProcessar();
-        }
-    });
-}
-
-function mostrarMensagemCobrancaAutomatica(mensagem, tipo) {
-    const mensagemDiv = document.getElementById('ca-mensagem');
-    if (!mensagemDiv) return;
-    
-    // Se a mensagem contém quebras de linha, usar innerHTML para preservar
-    if (mensagem.includes('\n')) {
-        mensagemDiv.innerHTML = mensagem.replace(/\n/g, '<br>');
-    } else {
-        mensagemDiv.textContent = mensagem;
-    }
-    
-    mensagemDiv.className = `mensagem ${tipo}`;
-    mensagemDiv.style.display = 'block';
-    
-    // Scroll para a mensagem
-    mensagemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    
-    // Não ocultar automaticamente - manter a mensagem visível
-    // A mensagem só será substituída por uma nova mensagem ou removida manualmente
-}
-
-function inicializarRetornoBancario() {
-    // Carregar bancos no select
-    carregarBancosSelectRetornoBancario();
-    
-    // Event listener para botão processar
-    const btnProcessar = document.getElementById('btn-processar-retorno');
-    if (btnProcessar) {
-        btnProcessar.addEventListener('click', function() {
-            processarArquivoRetorno();
-        });
-    }
-}
-
-function carregarBancosSelectRetornoBancario() {
-    const selectBanco = document.getElementById('rb-banco');
-    if (!selectBanco) return;
-    
-    fetch('/SISIPTU/php/bancos_api.php?action=list')
-        .then(r => r.json())
-        .then(data => {
-            if (data.sucesso && data.bancos) {
-                selectBanco.innerHTML = '<option value="">Selecione o banco...</option>';
-                data.bancos.forEach(banco => {
-                    const option = document.createElement('option');
-                    option.value = banco.id;
-                    option.textContent = banco.banco || banco.apelido || `Banco ${banco.id}`;
-                    selectBanco.appendChild(option);
-                });
-            }
-        })
-        .catch(err => {
-            console.error('Erro ao carregar bancos:', err);
-        });
-}
-
-function processarArquivoRetorno() {
-    const inputArquivo = document.getElementById('rb-arquivo');
-    const selectBanco = document.getElementById('rb-banco');
-    const inputDataMovimento = document.getElementById('rb-data-movimento');
-    const tabelaBody = document.getElementById('tabela-retorno-bancario-body');
-    const mensagemDiv = document.getElementById('rb-mensagem');
-    
-    if (!inputArquivo || !inputArquivo.files || inputArquivo.files.length === 0) {
-        mostrarMensagemRetornoBancario('Selecione um arquivo para processar.', 'erro');
-        return;
-    }
-    
-    if (!selectBanco || !selectBanco.value) {
-        mostrarMensagemRetornoBancario('Selecione o banco.', 'erro');
-        return;
-    }
-    
-    const arquivo = inputArquivo.files[0];
-    const bancoId = selectBanco.value;
-    const dataMovimento = inputDataMovimento ? inputDataMovimento.value : '';
-    
-    // Criar FormData para enviar arquivo
-    const formData = new FormData();
-    formData.append('arquivo', arquivo);
-    formData.append('banco_id', bancoId);
-    formData.append('data_movimento', dataMovimento);
-    formData.append('action', 'processar');
-    
-    // Mostrar loading
-    if (tabelaBody) {
-        tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px;">Processando arquivo...</td></tr>';
-    }
-    
-    fetch('/SISIPTU/php/retorno_bancario_api.php', {
-        method: 'POST',
-        body: formData
-    })
-    .then(r => r.json())
-    .then(data => {
-        if (data.sucesso) {
-            mostrarMensagemRetornoBancario(data.mensagem || 'Arquivo processado com sucesso!', 'sucesso');
-            
-            // Atualizar tabela com resultados
-            if (tabelaBody && data.registros) {
-                if (data.registros.length === 0) {
-                    tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #666;">Nenhum registro encontrado no arquivo.</td></tr>';
-                } else {
-                    let html = '';
-                    data.registros.forEach(reg => {
-                        html += `
-                            <tr>
-                                <td>${reg.linha || '-'}</td>
-                                <td>${reg.tipo || '-'}</td>
-                                <td>${reg.nosso_numero || '-'}</td>
-                                <td>R$ ${parseFloat(reg.valor || 0).toFixed(2).replace('.', ',')}</td>
-                                <td>${reg.data_pagamento || '-'}</td>
-                                <td>${reg.status || '-'}</td>
-                            </tr>
-                        `;
-                    });
-                    tabelaBody.innerHTML = html;
-                }
-            }
-        } else {
-            mostrarMensagemRetornoBancario(data.mensagem || 'Erro ao processar arquivo.', 'erro');
-            if (tabelaBody) {
-                tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao processar arquivo.</td></tr>';
-            }
-        }
-    })
-    .catch(err => {
-        console.error('Erro ao processar arquivo:', err);
-        mostrarMensagemRetornoBancario('Erro ao processar arquivo. Verifique o console para mais detalhes.', 'erro');
-        if (tabelaBody) {
-            tabelaBody.innerHTML = '<tr><td colspan="6" style="text-align: center; padding: 20px; color: #d32f2f;">Erro ao processar arquivo.</td></tr>';
-        }
-    });
-}
-
-function mostrarMensagemRetornoBancario(mensagem, tipo) {
-    const mensagemDiv = document.getElementById('rb-mensagem');
-    if (!mensagemDiv) return;
-    
-    mensagemDiv.textContent = mensagem;
-    mensagemDiv.className = `mensagem ${tipo}`;
-    mensagemDiv.style.display = 'block';
-    
-    // Scroll para a mensagem
-    mensagemDiv.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-    
-    // Ocultar após 5 segundos se for sucesso
-    if (tipo === 'sucesso') {
-        setTimeout(() => {
-            mensagemDiv.style.display = 'none';
-        }, 5000);
-    }
-}
-
-function carregarEmpreendimentosSelectCobrancaAutomatica() {
-    const select = document.getElementById('ca-empreendimento');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">Selecione o empreendimento...</option>';
-
-    fetch('/SISIPTU/php/empreendimentos_api.php?action=list')
-        .then(r => r.json())
-        .then(data => {
-            if (!data.sucesso) {
-                return;
-            }
-
-            const emps = data.empreendimentos || [];
-            emps.forEach(e => {
-                const opt = document.createElement('option');
-                opt.value = e.id;
-                opt.textContent = e.nome;
-                select.appendChild(opt);
-            });
-        })
-        .catch(err => {
-            console.error('Erro ao carregar empreendimentos:', err);
-        });
-}
-
-// Função removida - os campos de período agora são do tipo date (input type="date")
-
-// Função removida - o campo de contrato agora é um input de texto digitável
-
-
-function carregarEmpreendimentosSelectBaixaManual() {
-    const select = document.getElementById('bm-empreendimento');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">Selecione...</option>';
-
-    fetch('/SISIPTU/php/empreendimentos_api.php?action=list')
-        .then(r => r.json())
-        .then(data => {
-            if (!data.sucesso) {
-                return;
-            }
-
-            const emps = data.empreendimentos || [];
-            emps.forEach(e => {
-                const opt = document.createElement('option');
-                opt.value = e.id;
-                opt.textContent = e.nome;
-                select.appendChild(opt);
-            });
-        })
-        .catch(err => {
-            console.error(err);
-        });
-}
-
-function carregarModulosSelectBaixaManual(empreendimentoId = null) {
-    const select = document.getElementById('bm-modulo');
-    if (!select) return;
-
-    select.innerHTML = '<option value="">Selecione...</option>';
-
-    let url = '/SISIPTU/php/modulos_api.php?action=list';
-    if (empreendimentoId) {
-        url += '&empreendimento_id=' + encodeURIComponent(empreendimentoId);
-    }
-
-    fetch(url)
-        .then(r => r.json())
-        .then(data => {
-            if (!data.sucesso) return;
-
-            const mods = data.modulos || [];
-            if (empreendimentoId) {
-                mods.forEach(m => {
-                    if (m.empreendimento_id == empreendimentoId) {
-                        const opt = document.createElement('option');
-                        opt.value = m.id;
-                        opt.textContent = m.nome;
-                        select.appendChild(opt);
-                    }
-                });
-            } else {
-                mods.forEach(m => {
-                    const opt = document.createElement('option');
-                    opt.value = m.id;
-                    opt.textContent = m.nome;
-                    select.appendChild(opt);
-                });
-            }
-        })
-        .catch(err => {
-            console.error(err);
-        });
-}
-
-function mostrarMensagemBaixaManual(texto, tipo) {
-    const msg = document.getElementById('bm-mensagem');
-    if (!msg) return;
-
-    if (!texto || !tipo) {
-        msg.style.display = 'none';
-        return;
-    }
-
-    msg.textContent = texto;
-    msg.className = 'mensagem ' + tipo;
-    msg.style.display = 'block';
-
-    if (tipo === 'sucesso') {
-        setTimeout(() => {
-            msg.style.display = 'none';
-        }, 5000);
-    }
 }
 
 

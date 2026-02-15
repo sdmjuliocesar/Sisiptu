@@ -8,8 +8,8 @@ error_reporting(E_ALL);
 
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 // Limpar buffer antes de enviar JSON
 ob_clean();
@@ -206,10 +206,12 @@ try {
             $stmt->bindParam(':operacao_cc', $operacao_cc);
             $stmt->bindParam(':apelido', $apelido);
             $stmt->bindParam(':convenio', $convenio);
-            $stmt->bindValue(':multa_mes', $multa_mes, PDO::PARAM_NULL);
-            $stmt->bindValue(':tarifa_bancaria', $tarifa_bancaria, PDO::PARAM_NULL);
-            $stmt->bindValue(':juros_mes', $juros_mes, PDO::PARAM_NULL);
-            $stmt->bindValue(':prazo_devolucao', $prazo_devolucao, PDO::PARAM_NULL);
+            // DECIMAL(10,2): enviar como string com ponto; NULL quando vazio
+            $stmt->bindValue(':multa_mes', $multa_mes === null ? null : number_format((float)$multa_mes, 2, '.', ''), $multa_mes === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $stmt->bindValue(':tarifa_bancaria', $tarifa_bancaria === null ? null : number_format((float)$tarifa_bancaria, 2, '.', ''), $tarifa_bancaria === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $stmt->bindValue(':juros_mes', $juros_mes === null ? null : number_format((float)$juros_mes, 2, '.', ''), $juros_mes === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            // INTEGER: bind como int; NULL quando vazio
+            $stmt->bindValue(':prazo_devolucao', $prazo_devolucao === null ? null : (int)$prazo_devolucao, $prazo_devolucao === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
             $stmt->bindParam(':codigo_cedente', $codigo_cedente);
             $stmt->bindParam(':operacao_cedente', $operacao_cedente);
             $stmt->bindValue(':emissao_via_banco', $emissao_via_banco, PDO::PARAM_BOOL);
@@ -309,10 +311,12 @@ try {
             $stmt->bindParam(':operacao_cc', $operacao_cc);
             $stmt->bindParam(':apelido', $apelido);
             $stmt->bindParam(':convenio', $convenio);
-            $stmt->bindValue(':multa_mes', $multa_mes, PDO::PARAM_NULL);
-            $stmt->bindValue(':tarifa_bancaria', $tarifa_bancaria, PDO::PARAM_NULL);
-            $stmt->bindValue(':juros_mes', $juros_mes, PDO::PARAM_NULL);
-            $stmt->bindValue(':prazo_devolucao', $prazo_devolucao, PDO::PARAM_NULL);
+            // DECIMAL(10,2): enviar como string com ponto; NULL quando vazio
+            $stmt->bindValue(':multa_mes', $multa_mes === null ? null : number_format((float)$multa_mes, 2, '.', ''), $multa_mes === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $stmt->bindValue(':tarifa_bancaria', $tarifa_bancaria === null ? null : number_format((float)$tarifa_bancaria, 2, '.', ''), $tarifa_bancaria === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            $stmt->bindValue(':juros_mes', $juros_mes === null ? null : number_format((float)$juros_mes, 2, '.', ''), $juros_mes === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+            // INTEGER: bind como int; NULL quando vazio
+            $stmt->bindValue(':prazo_devolucao', $prazo_devolucao === null ? null : (int)$prazo_devolucao, $prazo_devolucao === null ? PDO::PARAM_NULL : PDO::PARAM_INT);
             $stmt->bindParam(':codigo_cedente', $codigo_cedente);
             $stmt->bindParam(':operacao_cedente', $operacao_cedente);
             $stmt->bindValue(':emissao_via_banco', $emissao_via_banco, PDO::PARAM_BOOL);

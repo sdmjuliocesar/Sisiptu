@@ -1,217 +1,156 @@
 <?php
 /**
- * Sistema de Log para o SISIPTU
- * Registra eventos importantes do sistema
+ * Sistema de logs do SISIPTU
+ *
+ * - Mantém compatibilidade com funções usadas no código:
+ *   - registrarLog($tipo, $mensagem, array $dados = [])
+ *   - registrarLogin($usuario, $sucesso, $motivo = '', array $dados = [])
+ *   - logError($mensagem, array $contexto = [], ?Throwable $exception = null)
+ *
+ * Observação: este arquivo não deve gerar saída (echo/print).
  */
 
-// Definir diretório de logs (ajustado para estar na pasta php)
-define('LOG_DIR', __DIR__ . '/../logs/');
+// Diretório base de logs (na raiz do projeto)
+if (!defined('LOG_DIR')) {
+    define('LOG_DIR', __DIR__ . '/../logs/');
+}
 
 /**
- * Função para registrar logs
- * @param string $tipo Tipo de log (login, erro, info, etc.)
- * @param string $mensagem Mensagem a ser registrada
- * @param array $dados Dados adicionais para o log
+ * Garante que o diretório de logs existe.
  */
-function registrarLog($tipo, $mensagem, $dados = []) {
+function garantirDiretorioLogs(): bool
+{
+    if (is_dir(LOG_DIR)) {
+        return true;
+    }
+
+    // Tentar criar diretório (recursivo)
+    return @mkdir(LOG_DIR, 0755, true) || is_dir(LOG_DIR);
+}
+
+/**
+ * Sanitiza dados potencialmente sensíveis antes de logar.
+ */
+function sanitizarDadosLog(array $dados): array
+{
+    $chavesSensiveis = [
+        'senha', 'password', 'pass', 'pwd',
+        'token', 'authorization', 'auth', 'cookie',
+        'db_pass', 'DB_PASS',
+    ];
+
+    foreach ($dados as $k => $v) {
+        if (is_string($k)) {
+            $keyLower = strtolower($k);
+            foreach ($chavesSensiveis as $sensivel) {
+                $sensivelLower = strtolower($sensivel);
+                if ($keyLower === $sensivelLower || str_contains($keyLower, $sensivelLower)) {
+                    $dados[$k] = '[REDACTED]';
+                    continue 2;
+                }
+            }
+        }
+
+        // Evitar objetos/arrays muito grandes ou recursivos
+        if (is_object($v)) {
+            $dados[$k] = '[object ' . get_class($v) . ']';
+        }
+    }
+
+    return $dados;
+}
+
+/**
+ * Registra uma linha de log no arquivo diário.
+ */
+function registrarLog(string $tipo, string $mensagem, array $dados = []): bool
+{
     try {
-        // Criar diretório de logs se não existir
-        if (!is_dir(LOG_DIR)) {
-            if (!mkdir(LOG_DIR, 0755, true)) {
-                error_log("Erro ao criar diretório de logs: " . LOG_DIR);
-                return false;
-            }
+        if (!garantirDiretorioLogs()) {
+            // Fallback para error_log do PHP se não conseguir criar pasta
+            error_log("[SISIPTU][{$tipo}] Falha ao criar/acessar LOG_DIR: " . LOG_DIR);
+            error_log("[SISIPTU][{$tipo}] " . $mensagem);
+            return false;
         }
-        
-        // Verificar se o diretório é gravável
-        if (!is_writable(LOG_DIR)) {
-            // Tentar alterar permissões
-            @chmod(LOG_DIR, 0755);
-            if (!is_writable(LOG_DIR)) {
-                error_log("Diretório de logs não é gravável: " . LOG_DIR);
-                return false;
-            }
-        }
-        
-        // Nome do arquivo de log baseado na data
-        $arquivoLog = LOG_DIR . 'login_' . date('Y-m-d') . '.log';
-        
-        // Obter IP do usuário
-        $ip = obterIP();
-        
-        // Preparar dados do log
-        $timestamp = date('Y-m-d H:i:s');
-        $logData = [
-            'timestamp' => $timestamp,
+
+        // Direcionar error_log do PHP para um arquivo central (útil para fatal errors fora de try/catch)
+        @ini_set('log_errors', '1');
+        @ini_set('error_log', LOG_DIR . 'php_errors.log');
+
+        $agora = date('Y-m-d H:i:s');
+        $arquivo = LOG_DIR . 'sisiptu-' . date('Y-m-d') . '.log';
+
+        $payload = [
+            'ts' => $agora,
             'tipo' => $tipo,
             'mensagem' => $mensagem,
-            'ip' => $ip,
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'N/A',
-            'dados' => $dados
         ];
-        
-        // Formatar linha do log
-        $linhaLog = sprintf(
-            "[%s] [%s] %s | IP: %s | %s\n",
-            $timestamp,
-            strtoupper($tipo),
-            $mensagem,
-            $ip,
-            json_encode($dados, JSON_UNESCAPED_UNICODE)
-        );
-        
-        // Escrever no arquivo de log
-        $resultado = @file_put_contents($arquivoLog, $linhaLog, FILE_APPEND | LOCK_EX);
-        
-        if ($resultado === false) {
-            error_log("Erro ao escrever no arquivo de log: " . $arquivoLog);
-            return false;
-        }
-        
-        return true;
-    } catch (Exception $e) {
-        error_log("Erro no sistema de log: " . $e->getMessage());
-        return false;
-    }
-}
 
-/**
- * Função para obter o IP real do usuário
- * @return string
- */
-function obterIP() {
-    $ip = '';
-    
-    if (!empty($_SERVER['HTTP_CLIENT_IP'])) {
-        $ip = $_SERVER['HTTP_CLIENT_IP'];
-    } elseif (!empty($_SERVER['HTTP_X_FORWARDED_FOR'])) {
-        $ip = $_SERVER['HTTP_X_FORWARDED_FOR'];
-    } elseif (!empty($_SERVER['REMOTE_ADDR'])) {
-        $ip = $_SERVER['REMOTE_ADDR'];
-    }
-    
-    // Se houver múltiplos IPs, pegar o primeiro
-    if (strpos($ip, ',') !== false) {
-        $ip = explode(',', $ip)[0];
-    }
-    
-    return trim($ip);
-}
-
-/**
- * Função para registrar tentativa de login
- * @param string $usuario Nome do usuário
- * @param bool $sucesso Se o login foi bem-sucedido
- * @param string $motivo Motivo da falha (se houver)
- * @param array $detalhes Detalhes adicionais (password_verify result, etc.)
- */
-function registrarLogin($usuario, $sucesso, $motivo = '', $detalhes = []) {
-    $tipo = $sucesso ? 'SUCCESS' : 'FAILED';
-    $mensagem = $sucesso 
-        ? "Login realizado com sucesso para o usuário: {$usuario}"
-        : "Tentativa de login falhou para o usuário: {$usuario}";
-    
-    if (!$sucesso && $motivo) {
-        $mensagem .= " - Motivo: {$motivo}";
-    }
-    
-    $dadosLog = [
-        'usuario' => $usuario,
-        'sucesso' => $sucesso,
-        'motivo' => $motivo
-    ];
-    
-    // Mesclar detalhes adicionais se fornecidos
-    if (!empty($detalhes)) {
-        $dadosLog = array_merge($dadosLog, $detalhes);
-    }
-    
-    registrarLog('LOGIN', $mensagem, $dadosLog);
-}
-
-/**
- * Função para registrar erros do sistema
- * @param string $mensagem Mensagem do erro
- * @param array $dados Dados adicionais do erro
- * @param Exception|null $exception Exceção capturada (opcional)
- */
-function logError($mensagem, $dados = [], $exception = null) {
-    try {
-        // Criar diretório de logs se não existir
-        if (!is_dir(LOG_DIR)) {
-            if (!mkdir(LOG_DIR, 0755, true)) {
-                error_log("Erro ao criar diretório de logs: " . LOG_DIR);
-                return false;
-            }
+        if (!empty($dados)) {
+            $payload['dados'] = sanitizarDadosLog($dados);
         }
-        
-        // Verificar se o diretório é gravável
-        if (!is_writable(LOG_DIR)) {
-            @chmod(LOG_DIR, 0755);
-            if (!is_writable(LOG_DIR)) {
-                error_log("Diretório de logs não é gravável: " . LOG_DIR);
-                return false;
-            }
-        }
-        
-        // Nome do arquivo de log baseado na data
-        $arquivoLog = LOG_DIR . 'erro_' . date('Y-m-d') . '.log';
-        
-        // Obter IP do usuário
-        $ip = obterIP();
-        
-        // Preparar dados do log
-        $timestamp = date('Y-m-d H:i:s');
-        
-        // Se houver exceção, adicionar informações dela
-        if ($exception instanceof Exception || $exception instanceof Error) {
-            $dados['exception'] = [
-                'message' => $exception->getMessage(),
-                'code' => $exception->getCode(),
-                'file' => $exception->getFile(),
-                'line' => $exception->getLine(),
-                'trace' => $exception->getTraceAsString()
+
+        // Incluir dados básicos do request quando disponíveis
+        if (PHP_SAPI !== 'cli') {
+            $payload['req'] = [
+                'ip' => $_SERVER['REMOTE_ADDR'] ?? null,
+                'method' => $_SERVER['REQUEST_METHOD'] ?? null,
+                'uri' => $_SERVER['REQUEST_URI'] ?? null,
             ];
         }
-        
-        $logData = [
-            'timestamp' => $timestamp,
-            'mensagem' => $mensagem,
-            'ip' => $ip,
-            'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'N/A',
-            'request_uri' => $_SERVER['REQUEST_URI'] ?? 'N/A',
-            'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'N/A',
-            'dados' => $dados
-        ];
-        
-        // Formatar linha do log
-        $linhaLog = sprintf(
-            "[%s] [ERRO] %s | IP: %s | URI: %s | %s\n",
-            $timestamp,
-            $mensagem,
-            $ip,
-            $_SERVER['REQUEST_URI'] ?? 'N/A',
-            json_encode($logData, JSON_UNESCAPED_UNICODE | JSON_PRETTY_PRINT)
-        );
-        
-        // Escrever no arquivo de log
-        $resultado = @file_put_contents($arquivoLog, $linhaLog, FILE_APPEND | LOCK_EX);
-        
-        if ($resultado === false) {
-            error_log("Erro ao escrever no arquivo de log: " . $arquivoLog);
-            return false;
+
+        $linha = json_encode($payload, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        if ($linha === false) {
+            $linha = '{"ts":"' . $agora . '","tipo":"' . $tipo . '","mensagem":"Falha ao codificar JSON do log"}';
         }
-        
-        return true;
-    } catch (Exception $e) {
-        error_log("Erro no sistema de log: " . $e->getMessage());
-        error_log("Mensagem original: " . $mensagem);
-        error_log("Dados: " . json_encode($dados, JSON_UNESCAPED_UNICODE));
+
+        $linha .= PHP_EOL;
+
+        return file_put_contents($arquivo, $linha, FILE_APPEND | LOCK_EX) !== false;
+    } catch (Throwable $e) {
+        // Nunca deixar o log quebrar o fluxo da aplicação
+        error_log("[SISIPTU][LOGGER] Exceção ao registrar log: " . $e->getMessage());
         return false;
     }
 }
-?>
 
+/**
+ * Atalho para logar erros com contexto e exceção.
+ */
+function logError(string $mensagem, array $contexto = [], ?Throwable $exception = null): bool
+{
+    if ($exception) {
+        $contexto = array_merge($contexto, [
+            'exception' => [
+                'tipo' => get_class($exception),
+                'mensagem' => $exception->getMessage(),
+                'codigo' => $exception->getCode(),
+                'arquivo' => $exception->getFile(),
+                'linha' => $exception->getLine(),
+                'trace' => $exception->getTraceAsString(),
+            ],
+        ]);
+    }
 
+    return registrarLog('ERRO', $mensagem, $contexto);
+}
 
+/**
+ * Log específico de login (sem registrar senha).
+ */
+function registrarLogin(string $usuario, bool $sucesso, string $motivo = '', array $dados = []): bool
+{
+    $base = [
+        'usuario' => $usuario,
+        'sucesso' => $sucesso,
+    ];
+    if ($motivo !== '') {
+        $base['motivo'] = $motivo;
+    }
+
+    // Não aceitar registrar qualquer campo "senha" que por acaso venha em $dados
+    unset($dados['senha'], $dados['password'], $dados['pass']);
+
+    return registrarLog('LOGIN', 'Evento de login', array_merge($base, $dados));
+}
 

@@ -1,8 +1,8 @@
 <?php
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -29,18 +29,41 @@ try {
 
     switch ($action) {
         case 'list':
-            $stmt = $pdo->query("
-                SELECT m.id,
-                       m.nome,
-                       m.empreendimento_id,
-                       e.nome AS empreendimento_nome,
-                       m.ativo,
-                       m.data_criacao,
-                       m.data_atualizacao
-                FROM modulos m
-                JOIN empreendimentos e ON e.id = m.empreendimento_id
-                ORDER BY m.id
-            ");
+            $empreendimento_id = isset($_GET['empreendimento_id']) && $_GET['empreendimento_id'] !== ''
+                ? (int)$_GET['empreendimento_id']
+                : 0;
+
+            if ($empreendimento_id > 0) {
+                $stmt = $pdo->prepare("
+                    SELECT m.id,
+                           m.nome,
+                           m.empreendimento_id,
+                           e.nome AS empreendimento_nome,
+                           m.ativo,
+                           m.data_criacao,
+                           m.data_atualizacao
+                    FROM modulos m
+                    JOIN empreendimentos e ON e.id = m.empreendimento_id
+                    WHERE m.empreendimento_id = :empreendimento_id
+                    ORDER BY m.id
+                ");
+                $stmt->bindParam(':empreendimento_id', $empreendimento_id, PDO::PARAM_INT);
+                $stmt->execute();
+            } else {
+                $stmt = $pdo->query("
+                    SELECT m.id,
+                           m.nome,
+                           m.empreendimento_id,
+                           e.nome AS empreendimento_nome,
+                           m.ativo,
+                           m.data_criacao,
+                           m.data_atualizacao
+                    FROM modulos m
+                    JOIN empreendimentos e ON e.id = m.empreendimento_id
+                    ORDER BY m.id
+                ");
+            }
+
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             jsonResponseMod(true, 'Lista de módulos carregada com sucesso.', ['modulos' => $rows]);
             break;
@@ -159,19 +182,6 @@ try {
         default:
             jsonResponseMod(false, 'Ação inválida.');
     }
-} catch (PDOException $e) {
-    // Capturar erro de violação de chave estrangeira
-    if ($e->getCode() === '23503') { // PostgreSQL foreign key violation error code
-        jsonResponseMod(false, 'Não é possível excluir o módulo pois ele possui contratos vinculados.');
-    } else {
-        registrarLog('ERRO', 'Erro no CRUD de módulos: ' . $e->getMessage(), [
-            'action' => $action,
-            'erro' => $e->getMessage(),
-            'arquivo' => $e->getFile(),
-            'linha' => $e->getLine(),
-        ]);
-        jsonResponseMod(false, 'Erro ao processar a requisição de módulos. Detalhes: ' . $e->getMessage());
-    }
 } catch (Exception $e) {
     registrarLog('ERRO', 'Erro no CRUD de módulos: ' . $e->getMessage(), [
         'action' => $action,
@@ -179,5 +189,6 @@ try {
         'arquivo' => $e->getFile(),
         'linha' => $e->getLine(),
     ]);
+
     jsonResponseMod(false, 'Erro ao processar a requisição de módulos. Detalhes: ' . $e->getMessage());
 }

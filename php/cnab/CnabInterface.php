@@ -55,7 +55,3 @@ interface CnabInterface {
     public function validarTitulo(array $titulo): bool;
 }
 
-
-
-
-

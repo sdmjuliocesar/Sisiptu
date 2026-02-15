@@ -8,8 +8,8 @@ if (ob_get_level()) {
 
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -118,6 +118,7 @@ try {
             $aliquota = isset($_POST['aliquota']) && $_POST['aliquota'] !== '' ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['aliquota'])) : null;
             $tx_coleta_lixo = isset($_POST['tx_coleta_lixo']) && $_POST['tx_coleta_lixo'] !== '' ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['tx_coleta_lixo'])) : null;
             $desconto_a_vista = isset($_POST['desconto_a_vista']) && $_POST['desconto_a_vista'] !== '' ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['desconto_a_vista'])) : null;
+            $dia_vencimento = isset($_POST['dia_vencimento']) && $_POST['dia_vencimento'] !== '' ? intval($_POST['dia_vencimento']) : null;
             $parcelamento = isset($_POST['parcelamento']) && $_POST['parcelamento'] !== '' ? intval($_POST['parcelamento']) : null;
             $obs = isset($_POST['obs']) ? trim($_POST['obs']) : null;
             $valor_mensal = isset($_POST['valor_mensal']) && $_POST['valor_mensal'] !== '' ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['valor_mensal'])) : null;
@@ -167,9 +168,9 @@ try {
             
             $sql = "INSERT INTO contratos (
                         empreendimento_id, modulo_id, cliente_id, contrato, area, inscricao, metragem, vrm2, 
-                        valor_venal, aliquota, tx_coleta_lixo, desconto_a_vista, 
+                        valor_venal, aliquota, tx_coleta_lixo, desconto_a_vista, dia_vencimento, 
                         parcelamento, obs, valor_mensal, valor_anual, cpf_cnpj, situacao
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)";
             
             try {
                 $stmt = $conn->prepare($sql);
@@ -186,6 +187,7 @@ try {
                     $aliquota_val,
                     $tx_coleta_lixo_val, 
                     $desconto_a_vista_val, 
+                    $dia_vencimento, 
                     $parcelamento, 
                     $obs,
                     $valor_mensal_val, 
@@ -237,7 +239,6 @@ try {
             
             $empreendimento_id = isset($_POST['empreendimento_id']) ? trim($_POST['empreendimento_id']) : '';
             $modulo_id = isset($_POST['modulo_id']) ? trim($_POST['modulo_id']) : '';
-            $cliente_id = isset($_POST['cliente_id']) && $_POST['cliente_id'] !== '' ? intval($_POST['cliente_id']) : null;
             $contrato = isset($_POST['contrato']) ? trim($_POST['contrato']) : '';
             $area = isset($_POST['area']) ? trim($_POST['area']) : null;
             $inscricao = isset($_POST['inscricao']) ? trim($_POST['inscricao']) : null;
@@ -247,6 +248,7 @@ try {
             $aliquota = isset($_POST['aliquota']) ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['aliquota'])) : null;
             $tx_coleta_lixo = isset($_POST['tx_coleta_lixo']) ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['tx_coleta_lixo'])) : null;
             $desconto_a_vista = isset($_POST['desconto_a_vista']) ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['desconto_a_vista'])) : null;
+            $dia_vencimento = isset($_POST['dia_vencimento']) && $_POST['dia_vencimento'] !== '' ? intval($_POST['dia_vencimento']) : null;
             $parcelamento = isset($_POST['parcelamento']) && $_POST['parcelamento'] !== '' ? intval($_POST['parcelamento']) : null;
             $obs = isset($_POST['obs']) ? trim($_POST['obs']) : null;
             $valor_mensal = isset($_POST['valor_mensal']) ? str_replace(',', '.', preg_replace('/[^\d,.-]/', '', $_POST['valor_mensal'])) : null;
@@ -269,7 +271,7 @@ try {
             $sql = "UPDATE contratos SET 
                         empreendimento_id = ?, modulo_id = ?, cliente_id = ?, contrato = ?, area = ?, inscricao = ?, 
                         metragem = ?, vrm2 = ?, valor_venal = ?, aliquota = ?, tx_coleta_lixo = ?, 
-                        desconto_a_vista = ?, parcelamento = ?, obs = ?, 
+                        desconto_a_vista = ?, dia_vencimento = ?, parcelamento = ?, obs = ?, 
                         valor_mensal = ?, valor_anual = ?, cpf_cnpj = ?, situacao = ?
                     WHERE id = ?";
             
@@ -282,7 +284,7 @@ try {
                 $aliquota !== null && $aliquota !== '' ? floatval($aliquota) : null,
                 $tx_coleta_lixo !== null && $tx_coleta_lixo !== '' ? floatval($tx_coleta_lixo) : null,
                 $desconto_a_vista !== null && $desconto_a_vista !== '' ? floatval($desconto_a_vista) : null,
-                $parcelamento, $obs,
+                $dia_vencimento, $parcelamento, $obs,
                 $valor_mensal !== null && $valor_mensal !== '' ? floatval($valor_mensal) : null,
                 $valor_anual !== null && $valor_anual !== '' ? floatval($valor_anual) : null,
                 $cpf_cnpj, $situacao, $id

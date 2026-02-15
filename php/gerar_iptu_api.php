@@ -8,8 +8,8 @@ error_reporting(E_ALL);
 
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
     ob_clean();

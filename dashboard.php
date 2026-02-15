@@ -56,12 +56,6 @@ $login_time = $_SESSION['login_time'];
                                 </a>
                             </li>
                             <li>
-                                <a href="#" class="submenu-item" data-page="cadastro-empresas">
-                                    <span class="icon">🏭</span>
-                                    <span class="text">Empresas</span>
-                                </a>
-                            </li>
-                            <li>
                                 <a href="#" class="submenu-item" data-page="cadastro-empreendimentos">
                                     <span class="icon">🏢</span>
                                     <span class="text">Empreendimentos</span>
@@ -155,12 +149,6 @@ $login_time = $_SESSION['login_time'];
                                 <a href="#" class="submenu-item" data-page="cobranca-automatica">
                                     <span class="icon">⚙️</span>
                                     <span class="text">Cobrança Automática</span>
-                                </a>
-                            </li>
-                            <li>
-                                <a href="#" class="submenu-item" data-page="cobranca-retorno-bancario">
-                                    <span class="icon">🏦</span>
-                                    <span class="text">Retorno Bancário</span>
                                 </a>
                             </li>
                         </ul>

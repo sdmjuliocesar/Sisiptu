@@ -1,8 +1,8 @@
 <?php
 session_start();
 
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 header('Content-Type: application/json; charset=utf-8');
 
@@ -22,18 +22,38 @@ function jsonResponseEmp($sucesso, $mensagem, $extra = []) {
     exit;
 }
 
+function tableHasColumnEmp(PDO $pdo, string $table, string $column): bool
+{
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS existe
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = :table
+          AND column_name = :column
+    ");
+    $stmt->execute([':table' => $table, ':column' => $column]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row && (int)$row['existe'] > 0;
+}
+
 $action = isset($_REQUEST['action']) ? $_REQUEST['action'] : 'list';
 
 try {
     $pdo = getConnection();
+    $hasBancoId = tableHasColumnEmp($pdo, 'empreendimentos', 'banco_id');
 
     switch ($action) {
         case 'list':
-            $stmt = $pdo->query("
-                SELECT id, nome, descricao, endereco, bairro, cidade, uf, cep, empresa_id, banco_id, ativo, data_criacao, data_atualizacao
+            $sql = "
+                SELECT id, nome, descricao, endereco, bairro, cidade, uf, cep, ativo, data_criacao, data_atualizacao";
+            if ($hasBancoId) {
+                $sql .= ", banco_id";
+            }
+            $sql .= "
                 FROM empreendimentos
                 ORDER BY id
-            ");
+            ";
+            $stmt = $pdo->query($sql);
             $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
             jsonResponseEmp(true, 'Lista de empreendimentos carregada com sucesso.', ['empreendimentos' => $rows]);
             break;
@@ -44,11 +64,16 @@ try {
                 jsonResponseEmp(false, 'ID inválido.');
             }
 
-            $stmt = $pdo->prepare("
-                SELECT id, nome, descricao, endereco, bairro, cidade, uf, cep, empresa_id, banco_id, ativo
+            $sql = "
+                SELECT id, nome, descricao, endereco, bairro, cidade, uf, cep, ativo";
+            if ($hasBancoId) {
+                $sql .= ", banco_id";
+            }
+            $sql .= "
                 FROM empreendimentos
                 WHERE id = :id
-            ");
+            ";
+            $stmt = $pdo->prepare($sql);
             $stmt->bindParam(':id', $id, PDO::PARAM_INT);
             $stmt->execute();
             $row = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -68,44 +93,24 @@ try {
             $cidade = trim($_POST['cidade'] ?? '');
             $uf = strtoupper(trim($_POST['uf'] ?? ''));
             $cep = trim($_POST['cep'] ?? '');
-            // Processar empresa_id - tratar string vazia como null
-            $empresa_id_raw = $_POST['empresa_id'] ?? '';
-            $empresa_id = ($empresa_id_raw !== '' && $empresa_id_raw !== '0' && $empresa_id_raw !== null) ? (int)$empresa_id_raw : null;
-            
-            // Processar banco_id - tratar string vazia como null
-            $banco_id_raw = $_POST['banco_id'] ?? '';
-            $banco_id = ($banco_id_raw !== '' && $banco_id_raw !== '0' && $banco_id_raw !== null) ? (int)$banco_id_raw : null;
-            
             $ativo = isset($_POST['ativo']) && $_POST['ativo'] === '1';
+            $banco_id = (isset($_POST['banco_id']) && $_POST['banco_id'] !== '') ? (int)$_POST['banco_id'] : null;
 
             if ($nome === '') {
                 jsonResponseEmp(false, 'O campo Nome do Empreendimento é obrigatório.');
             }
 
-            // Validar empresa_id se fornecido
-            if ($empresa_id !== null && $empresa_id > 0) {
-                $stmt = $pdo->prepare("SELECT id FROM clientes WHERE id = :id AND tipo_cadastro = 'Empresa'");
-                $stmt->bindParam(':id', $empresa_id, PDO::PARAM_INT);
-                $stmt->execute();
-                if (!$stmt->fetch()) {
-                    jsonResponseEmp(false, 'Empresa selecionada não encontrada ou inválida. Verifique se a empresa existe e está cadastrada corretamente.');
-                }
+            if ($hasBancoId) {
+                $stmt = $pdo->prepare("
+                    INSERT INTO empreendimentos (nome, descricao, endereco, bairro, cidade, uf, cep, ativo, banco_id)
+                    VALUES (:nome, :descricao, :endereco, :bairro, :cidade, :uf, :cep, :ativo, :banco_id)
+                ");
+            } else {
+                $stmt = $pdo->prepare("
+                    INSERT INTO empreendimentos (nome, descricao, endereco, bairro, cidade, uf, cep, ativo)
+                    VALUES (:nome, :descricao, :endereco, :bairro, :cidade, :uf, :cep, :ativo)
+                ");
             }
-
-            // Validar banco_id se fornecido
-            if ($banco_id !== null && $banco_id > 0) {
-                $stmt = $pdo->prepare("SELECT id FROM bancos WHERE id = :id");
-                $stmt->bindParam(':id', $banco_id, PDO::PARAM_INT);
-                $stmt->execute();
-                if (!$stmt->fetch()) {
-                    jsonResponseEmp(false, 'Banco selecionado não encontrado.');
-                }
-            }
-
-            $stmt = $pdo->prepare("
-                INSERT INTO empreendimentos (nome, descricao, endereco, bairro, cidade, uf, cep, empresa_id, banco_id, ativo)
-                VALUES (:nome, :descricao, :endereco, :bairro, :cidade, :uf, :cep, :empresa_id, :banco_id, :ativo)
-            ");
             $stmt->bindParam(':nome', $nome);
             $stmt->bindParam(':descricao', $descricao);
             $stmt->bindParam(':endereco', $endereco);
@@ -113,18 +118,14 @@ try {
             $stmt->bindParam(':cidade', $cidade);
             $stmt->bindParam(':uf', $uf);
             $stmt->bindParam(':cep', $cep);
-            // Usar PDO::PARAM_NULL quando o valor for null, senão PDO::PARAM_INT
-            if ($empresa_id === null) {
-                $stmt->bindValue(':empresa_id', null, PDO::PARAM_NULL);
-            } else {
-                $stmt->bindValue(':empresa_id', $empresa_id, PDO::PARAM_INT);
-            }
-            if ($banco_id === null) {
-                $stmt->bindValue(':banco_id', null, PDO::PARAM_NULL);
-            } else {
-                $stmt->bindValue(':banco_id', $banco_id, PDO::PARAM_INT);
-            }
             $stmt->bindValue(':ativo', $ativo, PDO::PARAM_BOOL);
+            if ($hasBancoId) {
+                if ($banco_id === null) {
+                    $stmt->bindValue(':banco_id', null, PDO::PARAM_NULL);
+                } else {
+                    $stmt->bindValue(':banco_id', $banco_id, PDO::PARAM_INT);
+                }
+            }
             $stmt->execute();
 
             jsonResponseEmp(true, 'Empreendimento criado com sucesso.');
@@ -139,15 +140,8 @@ try {
             $cidade = trim($_POST['cidade'] ?? '');
             $uf = strtoupper(trim($_POST['uf'] ?? ''));
             $cep = trim($_POST['cep'] ?? '');
-            // Processar empresa_id - tratar string vazia como null
-            $empresa_id_raw = $_POST['empresa_id'] ?? '';
-            $empresa_id = ($empresa_id_raw !== '' && $empresa_id_raw !== '0' && $empresa_id_raw !== null) ? (int)$empresa_id_raw : null;
-            
-            // Processar banco_id - tratar string vazia como null
-            $banco_id_raw = $_POST['banco_id'] ?? '';
-            $banco_id = ($banco_id_raw !== '' && $banco_id_raw !== '0' && $banco_id_raw !== null) ? (int)$banco_id_raw : null;
-            
             $ativo = isset($_POST['ativo']) && $_POST['ativo'] === '1';
+            $banco_id = (isset($_POST['banco_id']) && $_POST['banco_id'] !== '') ? (int)$_POST['banco_id'] : null;
 
             if ($id <= 0) {
                 jsonResponseEmp(false, 'ID inválido.');
@@ -165,27 +159,7 @@ try {
                 jsonResponseEmp(false, 'Empreendimento não encontrado.');
             }
 
-            // Validar empresa_id se fornecido
-            if ($empresa_id !== null && $empresa_id > 0) {
-                $stmt = $pdo->prepare("SELECT id FROM clientes WHERE id = :id AND tipo_cadastro = 'Empresa'");
-                $stmt->bindParam(':id', $empresa_id, PDO::PARAM_INT);
-                $stmt->execute();
-                if (!$stmt->fetch()) {
-                    jsonResponseEmp(false, 'Empresa selecionada não encontrada ou inválida. Verifique se a empresa existe e está cadastrada corretamente.');
-                }
-            }
-
-            // Validar banco_id se fornecido
-            if ($banco_id !== null && $banco_id > 0) {
-                $stmt = $pdo->prepare("SELECT id FROM bancos WHERE id = :id");
-                $stmt->bindParam(':id', $banco_id, PDO::PARAM_INT);
-                $stmt->execute();
-                if (!$stmt->fetch()) {
-                    jsonResponseEmp(false, 'Banco selecionado não encontrado.');
-                }
-            }
-
-            $stmt = $pdo->prepare("
+            $sql = "
                 UPDATE empreendimentos
                 SET nome = :nome,
                     descricao = :descricao,
@@ -194,12 +168,16 @@ try {
                     cidade = :cidade,
                     uf = :uf,
                     cep = :cep,
-                    empresa_id = :empresa_id,
-                    banco_id = :banco_id,
-                    ativo = :ativo,
+                    ativo = :ativo,"; 
+            if ($hasBancoId) {
+                $sql .= "
+                    banco_id = :banco_id,";
+            }
+            $sql .= "
                     data_atualizacao = CURRENT_TIMESTAMP
                 WHERE id = :id
-            ");
+            ";
+            $stmt = $pdo->prepare($sql);
             $stmt->bindParam(':nome', $nome);
             $stmt->bindParam(':descricao', $descricao);
             $stmt->bindParam(':endereco', $endereco);
@@ -207,18 +185,14 @@ try {
             $stmt->bindParam(':cidade', $cidade);
             $stmt->bindParam(':uf', $uf);
             $stmt->bindParam(':cep', $cep);
-            // Usar PDO::PARAM_NULL quando o valor for null, senão PDO::PARAM_INT
-            if ($empresa_id === null) {
-                $stmt->bindValue(':empresa_id', null, PDO::PARAM_NULL);
-            } else {
-                $stmt->bindValue(':empresa_id', $empresa_id, PDO::PARAM_INT);
-            }
-            if ($banco_id === null) {
-                $stmt->bindValue(':banco_id', null, PDO::PARAM_NULL);
-            } else {
-                $stmt->bindValue(':banco_id', $banco_id, PDO::PARAM_INT);
-            }
             $stmt->bindValue(':ativo', $ativo, PDO::PARAM_BOOL);
+            if ($hasBancoId) {
+                if ($banco_id === null) {
+                    $stmt->bindValue(':banco_id', null, PDO::PARAM_NULL);
+                } else {
+                    $stmt->bindValue(':banco_id', $banco_id, PDO::PARAM_INT);
+                }
+            }
             $stmt->bindParam(':id', $id, PDO::PARAM_INT);
             $stmt->execute();
 

@@ -53,10 +53,10 @@ $cnab = CnabFactory::criar('001', 400); // Banco do Brasil, CNAB 400
 
 // Dados do banco
 $dadosBanco = [
-    'agencia' => '1234',
-    'conta' => '567890',
-    'codigo_cedente' => '12345',
-    'cedente' => 'Nome do Cedente',
+    'agencia' => '1234',              // Agência (obrigatório)
+    'conta' => '567890',              // Conta corrente (obrigatório)
+    'codigo_cedente' => '12345',      // Código do cedente (obrigatório)
+    'cedente' => 'Nome do Cedente',   // Nome do cedente (obrigatório)
     'carteira' => '21'
 ];
 
@@ -75,86 +75,6 @@ $titulos = [
 $caminhoArquivo = $cnab->gerarRemessa($dadosBanco, $titulos, '/caminho/remessa');
 ```
 
-## Adicionar Novo Banco
-
-1. Criar nova classe estendendo `CnabAbstract`:
-
-```php
-class CnabNovoBanco extends CnabAbstract {
-    public function __construct(int $versaoCnab = 400) {
-        $this->codigoBanco = '999';
-        $this->nomeBanco = 'Novo Banco';
-        $this->versaoCnab = $versaoCnab;
-    }
-    
-    public function gerarRemessa(array $dadosBanco, array $titulos, string $caminhoDestino): string {
-        // Implementar lógica específica do banco
-    }
-    
-    // Implementar métodos privados:
-    // - gerarHeader()
-    // - gerarRegistroTitulo()
-    // - gerarTrailer()
-    // - gerarNomeArquivo()
-}
-```
-
-2. Registrar no Factory:
-
-```php
-// Em CnabFactory.php
-private static $bancos = [
-    // ... bancos existentes
-    '999' => 'CnabNovoBanco',
-];
-```
-
-## Formato dos Dados
-
-### Dados do Banco
-
-```php
-[
-    'agencia' => '1234',              // Agência (obrigatório)
-    'dv_agencia' => '5',              // Dígito verificador da agência
-    'conta' => '567890',              // Conta corrente (obrigatório)
-    'dv_conta' => '1',                // Dígito verificador da conta
-    'codigo_cedente' => '12345',      // Código do cedente (obrigatório)
-    'cedente' => 'Nome do Cedente',   // Nome do cedente (obrigatório)
-    'carteira' => '21',               // Carteira
-    'num_banco' => '001'              // Número do banco
-]
-```
-
-### Dados do Título
-
-```php
-[
-    'id' => 123,                      // ID do título
-    'valor_mensal' => 1000.00,        // Valor (obrigatório)
-    'datavencimento' => '2024-01-15', // Data de vencimento (obrigatório)
-    'cliente_nome' => 'João Silva',   // Nome do cliente
-    'contrato' => '12345',            // Número do contrato
-    'nosso_numero' => '123456',       // Nosso número
-    'juros_calculado' => 10.50,       // Juros calculados
-    'multa_calculada' => 5.00,        // Multa calculada
-    'cep' => '12345678'               // CEP do cliente
-]
-```
-
-## Métodos Utilitários Disponíveis
-
-A classe `CnabAbstract` fornece métodos úteis:
-
-- `apenasNumeros($valor)` - Remove caracteres não numéricos
-- `formatarValor($valor, $tamanho)` - Formata valor monetário
-- `formatarData($data)` - Formata data para DDMMYYYY
-- `formatarAlfanumerico($valor, $tamanho)` - Formata campo alfanumérico
-- `formatarNumerico($valor, $tamanho)` - Formata campo numérico
-- `removerAcentos($string)` - Remove acentos
-- `modulo11($numero, $base)` - Calcula dígito verificador módulo 11
-- `modulo10($numero)` - Calcula dígito verificador módulo 10
-
 ## Integração com Cobrança Automática
 
 O sistema está integrado com a tela de "Cobrança Automática". Quando o checkbox "Remissão de Boletos" está marcado, o sistema automaticamente:
@@ -163,18 +83,4 @@ O sistema está integrado com a tela de "Cobrança Automática". Quando o checkb
 2. Gera o arquivo CNAB com os títulos selecionados
 3. Salva o arquivo no diretório configurado em `caminho_remessa`
 4. Atualiza o status dos títulos para "ENVIADO"
-
-## Logs
-
-Todas as operações são registradas em `logs/erro_*.log` usando a função `logError()`.
-
-## Notas
-
-- O sistema suporta CNAB 400 por padrão. CNAB 240 pode ser implementado criando novas classes ou adicionando lógica condicional.
-- Cada banco pode ter especificidades no formato. Consulte a documentação oficial do banco para ajustes.
-- Os arquivos gerados seguem o padrão: `CB{codigo_banco}{data}{hora}.REM`
-
-
-
-
 

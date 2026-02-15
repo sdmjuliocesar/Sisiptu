@@ -148,9 +148,6 @@ class CnabBancoBrasil extends CnabAbstract {
     private function gerarNomeArquivo(array $dadosBanco): string {
         $data = date('dmy');
         $hora = date('His');
-        $agencia = $this->formatarNumerico($dadosBanco['agencia'], 4);
-        $conta = $this->formatarNumerico($dadosBanco['conta'], 8);
-        
         return "CB{$this->codigoBanco}{$data}{$hora}.REM";
     }
 }

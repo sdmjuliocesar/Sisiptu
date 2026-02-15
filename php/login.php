@@ -1,31 +1,29 @@
 <?php
-// Iniciar buffer de saída para capturar qualquer output inesperado
+// Evitar qualquer saída acidental que quebre JSON
 ob_start();
 
-// Desabilitar exibição de erros no output (mas manter no log)
+// Não exibir erros na resposta (senão quebra o JSON). Logs vão para o logger/PHP error_log.
+ini_set('display_errors', '0');
+ini_set('log_errors', '1');
 error_reporting(E_ALL);
-ini_set('display_errors', 0);
-ini_set('log_errors', 1);
 
 session_start();
 
 // Incluir arquivos de configuração
-require_once __DIR__ . '/database.php';
-require_once __DIR__ . '/logger.php';
-
-// Limpar qualquer output capturado antes de definir o header JSON
-ob_clean();
-
-// Definir header JSON
-header('Content-Type: application/json; charset=utf-8');
+require_once __DIR__ . '/../config/database.php';
+require_once __DIR__ . '/../config/logger.php';
 
 /**
- * Função helper para retornar JSON e encerrar o script
+ * Resposta JSON padronizada para o login.
  */
-function retornarJson($dados) {
-    ob_clean(); // Limpar qualquer output antes de enviar JSON
-    echo json_encode($dados, JSON_UNESCAPED_UNICODE);
-    ob_end_flush();
+function jsonResponseLogin(array $payload, int $statusCode = 200): void
+{
+    if (ob_get_length()) {
+        @ob_clean();
+    }
+    http_response_code($statusCode);
+    header('Content-Type: application/json; charset=utf-8');
+    echo json_encode($payload, JSON_UNESCAPED_UNICODE);
     exit;
 }
 
@@ -37,16 +35,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
     // Validação básica
     if (empty($usuario) || empty($senha)) {
         // Registrar tentativa de login com campos vazios
-        try {
-            registrarLogin($usuario ?: 'N/A', false, 'Campos vazios');
-        } catch (Exception $e) {
-            // Ignorar erros de log, não devem impedir a resposta
-        }
-        
-        retornarJson([
+        registrarLogin($usuario ?: 'N/A', false, 'Campos vazios');
+
+        jsonResponseLogin([
             'sucesso' => false,
             'mensagem' => 'Por favor, preencha todos os campos.'
-        ]);
+        ], 400);
     }
     
     try {
@@ -94,17 +88,13 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_SESSION['logado'] = true;
             
             // Registrar login bem-sucedido com detalhes da verificação
-            try {
-                registrarLog('LOGIN', "Login realizado com sucesso para o usuário: {$usuario}", array_merge([
-                    'usuario' => $usuario,
-                    'sucesso' => true,
-                    'motivo' => 'Senha correta (comparação direta)'
-                ], $detalhesVerificacao));
-            } catch (Exception $e) {
-                // Ignorar erros de log, não devem impedir o login
-            }
-            
-            retornarJson([
+            registrarLog('LOGIN', "Login realizado com sucesso para o usuário: {$usuario}", array_merge([
+                'usuario' => $usuario,
+                'sucesso' => true,
+                'motivo' => 'Senha correta (comparação direta)'
+            ], $detalhesVerificacao));
+
+            jsonResponseLogin([
                 'sucesso' => true,
                 'mensagem' => 'Login realizado com sucesso!',
                 'redirect' => '/SISIPTU/dashboard.php'
@@ -115,34 +105,26 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 ? 'Usuário não encontrado no banco de dados' 
                 : 'Senha incorreta (comparação direta)';
             
-            try {
-                registrarLog('LOGIN', "Tentativa de login falhou para o usuário: {$usuario} - {$motivo}", array_merge([
-                    'usuario' => $usuario,
-                    'sucesso' => false,
-                    'motivo' => $motivo
-                ], $detalhesVerificacao));
-            } catch (Exception $e) {
-                // Ignorar erros de log, não devem impedir a resposta
-            }
-            
-            retornarJson([
+            registrarLog('LOGIN', "Tentativa de login falhou para o usuário: {$usuario} - {$motivo}", array_merge([
+                'usuario' => $usuario,
+                'sucesso' => false,
+                'motivo' => $motivo
+            ], $detalhesVerificacao));
+
+            jsonResponseLogin([
                 'sucesso' => false,
                 'mensagem' => 'Usuário ou senha incorretos.'
-            ]);
+            ], 401);
         }
         
     } catch (PDOException $e) {
         // Registrar erro de conexão com o banco
         $erroMsg = 'Erro na conexão com banco de dados: ' . $e->getMessage();
-        try {
-            registrarLog('ERRO', $erroMsg, [
-                'usuario' => $usuario,
-                'erro' => $e->getMessage(),
-                'codigo' => $e->getCode()
-            ]);
-        } catch (Exception $logEx) {
-            // Ignorar erros de log
-        }
+        registrarLog('ERRO', $erroMsg, [
+            'usuario' => $usuario,
+            'erro' => $e->getMessage(),
+            'codigo' => $e->getCode()
+        ]);
         
         // Em caso de erro na conexão, usar autenticação simples para demonstração
         // REMOVER EM PRODUÇÃO - usar apenas banco de dados
@@ -154,29 +136,21 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             $_SESSION['logado'] = true;
             
             // Registrar login bem-sucedido (modo fallback)
-            try {
-                registrarLogin($usuario, true, 'Autenticação via fallback - Erro no BD: ' . $e->getMessage());
-            } catch (Exception $logEx) {
-                // Ignorar erros de log
-            }
-            
-            retornarJson([
+            registrarLogin($usuario, true, 'Autenticação via fallback - Erro no BD: ' . $e->getMessage());
+
+            jsonResponseLogin([
                 'sucesso' => true,
                 'mensagem' => 'Login realizado com sucesso!',
                 'redirect' => '/SISIPTU/dashboard.php'
             ]);
         } else {
             // Registrar tentativa falha
-            try {
-                registrarLogin($usuario, false, 'Erro na conexão com banco de dados: ' . $e->getMessage());
-            } catch (Exception $logEx) {
-                // Ignorar erros de log
-            }
-            
-            retornarJson([
+            registrarLogin($usuario, false, 'Erro na conexão com banco de dados: ' . $e->getMessage());
+
+            jsonResponseLogin([
                 'sucesso' => false,
                 'mensagem' => 'Usuário ou senha incorretos.'
-            ]);
+            ], 401);
         }
     } catch (Exception $e) {
         // Preparar informações detalhadas do erro
@@ -222,8 +196,8 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
                 
                 // Registrar no error_log do PHP como fallback
                 error_log("[LOGIN FALLBACK] Login realizado com erro no sistema de logs para usuário: " . $usuario);
-                
-                retornarJson([
+
+                jsonResponseLogin([
                     'sucesso' => true,
                     'mensagem' => 'Login realizado com sucesso! (Aviso: Erro no sistema de logs)',
                     'redirect' => '/SISIPTU/dashboard.php'
@@ -238,15 +212,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
             error_log("[LOGIN] Erro ao registrar login falho: " . $logEx->getMessage());
         }
         
-        retornarJson([
+        jsonResponseLogin([
             'sucesso' => false,
             'mensagem' => $mensagemErro . ' Detalhes: ' . $e->getMessage()
-        ]);
+        ], 500);
     }
 } else {
     // Se não for POST, redirecionar para a página de login
     header('Location: ../index.html');
     exit;
 }
-?>
 

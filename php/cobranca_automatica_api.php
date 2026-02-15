@@ -1,40 +1,42 @@
 <?php
-// Iniciar output buffering para evitar saída prematura
+// API Cobrança Automática (restaurada do Git + compatibilidade de colunas)
+// - actions: pesquisar-titulos (GET), processar (POST JSON)
+// - Gera CNAB quando empreendimento tem banco configurado (banco_id) e php/cnab está presente
+
 if (!ob_get_level()) {
     ob_start();
 }
 
-// Desabilitar exibição de erros na saída
-ini_set('display_errors', 0);
+ini_set('display_errors', '0');
 error_reporting(E_ALL);
 
-// Registrar handler de erros fatais
-register_shutdown_function(function() {
+register_shutdown_function(function () {
     $error = error_get_last();
-    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR])) {
-        // Tentar registrar no log antes de enviar resposta
+    if ($error && in_array($error['type'], [E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR], true)) {
         if (function_exists('logError')) {
             try {
                 logError('Erro fatal capturado no shutdown', [
                     'type' => $error['type'],
                     'message' => $error['message'],
                     'file' => $error['file'],
-                    'line' => $error['line']
+                    'line' => $error['line'],
                 ]);
-            } catch (Exception $e) {
+            } catch (Throwable $e) {
                 error_log("Erro fatal: " . $error['message'] . " em " . $error['file'] . ":" . $error['line']);
             }
         } else {
             error_log("Erro fatal: " . $error['message'] . " em " . $error['file'] . ":" . $error['line']);
         }
-        
-        ob_clean();
+
+        if (ob_get_length()) {
+            @ob_clean();
+        }
         header('Content-Type: application/json; charset=utf-8');
         http_response_code(500);
         echo json_encode([
             'sucesso' => false,
-            'mensagem' => 'Erro fatal no servidor: ' . $error['message'] . ' em ' . $error['file'] . ':' . $error['line']
-        ]);
+            'mensagem' => 'Erro fatal no servidor: ' . $error['message'] . ' em ' . $error['file'] . ':' . $error['line'],
+        ], JSON_UNESCAPED_UNICODE);
         exit;
     }
 });
@@ -44,92 +46,79 @@ session_start();
 require_once __DIR__ . '/database.php';
 require_once __DIR__ . '/logger.php';
 
-// Limpar buffer antes de enviar JSON
-ob_clean();
-header('Content-Type: application/json; charset=utf-8');
-
-if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
-    echo json_encode([
-        'sucesso' => false,
-        'mensagem' => 'Acesso não autorizado. Faça login novamente.'
-    ]);
-    exit;
-}
-
-function jsonResponse($sucesso, $mensagem, $extra = []) {
-    // Limpar qualquer saída anterior
-    ob_clean();
+function jsonResponse(bool $sucesso, string $mensagem, array $extra = [], int $status = 200): void
+{
+    if (ob_get_length()) {
+        @ob_clean();
+    }
+    http_response_code($status);
     header('Content-Type: application/json; charset=utf-8');
     echo json_encode(array_merge([
         'sucesso' => $sucesso,
         'mensagem' => $mensagem,
-    ], $extra));
+    ], $extra), JSON_UNESCAPED_UNICODE);
     exit;
 }
 
-// Ler action de GET ou POST
+if (!isset($_SESSION['logado']) || $_SESSION['logado'] !== true) {
+    jsonResponse(false, 'Acesso não autorizado. Faça login novamente.', [], 401);
+}
+
+function tableHasColumn(PDO $pdo, string $table, string $column): bool
+{
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) AS existe
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = :table
+          AND column_name = :column
+    ");
+    $stmt->execute([':table' => $table, ':column' => $column]);
+    $row = $stmt->fetch(PDO::FETCH_ASSOC);
+    return $row && (int)$row['existe'] > 0;
+}
+
+// Ler action de GET ou POST(JSON)
 $action = '';
-if ($_SERVER['REQUEST_METHOD'] === 'POST') {
+$data = null;
+if (($_SERVER['REQUEST_METHOD'] ?? '') === 'POST') {
     $input = file_get_contents('php://input');
     $data = json_decode($input, true);
-    $action = isset($data['action']) ? $data['action'] : '';
+    $action = is_array($data) ? ($data['action'] ?? '') : '';
 } else {
-    $action = isset($_REQUEST['action']) ? $_REQUEST['action'] : '';
+    $action = $_REQUEST['action'] ?? '';
 }
 
 try {
     $pdo = getConnection();
-    
+
+    // Compatibilidade de colunas da tabela cobranca
+    $hasDatavencimento = tableHasColumn($pdo, 'cobranca', 'datavencimento');
+    $hasDataVencimento = tableHasColumn($pdo, 'cobranca', 'data_vencimento');
+    $colVenc = $hasDatavencimento ? 'c.datavencimento' : ($hasDataVencimento ? 'c.data_vencimento' : 'NULL');
+
+    $hasTitulo = tableHasColumn($pdo, 'cobranca', 'titulo');
+    $hasAnoRef = tableHasColumn($pdo, 'cobranca', 'ano_referencia');
+    $hasPago = tableHasColumn($pdo, 'cobranca', 'pago');
+    $hasObs = tableHasColumn($pdo, 'cobranca', 'observacao');
+    $hasSituacao = tableHasColumn($pdo, 'cobranca', 'situacao');
+    $hasDataEnvio = tableHasColumn($pdo, 'cobranca', 'dataenvio');
+
     switch ($action) {
-        case 'pesquisar-titulos':
+        case 'pesquisar-titulos': {
             $empreendimento_id = isset($_GET['empreendimento_id']) && $_GET['empreendimento_id'] !== '' ? (int)$_GET['empreendimento_id'] : null;
-            $periodo_inicio = isset($_GET['periodo_inicio']) ? trim($_GET['periodo_inicio']) : null;
-            $periodo_fim = isset($_GET['periodo_fim']) ? trim($_GET['periodo_fim']) : null;
-            $titulo = isset($_GET['titulo']) ? trim($_GET['titulo']) : null;
-            $contrato = isset($_GET['contrato']) ? trim($_GET['contrato']) : null;
-            
-            // Validações
+            $periodo_inicio = isset($_GET['periodo_inicio']) ? trim((string)$_GET['periodo_inicio']) : null;
+            $periodo_fim = isset($_GET['periodo_fim']) ? trim((string)$_GET['periodo_fim']) : null;
+            $titulo = isset($_GET['titulo']) ? trim((string)$_GET['titulo']) : null;
+            $contrato = isset($_GET['contrato']) ? trim((string)$_GET['contrato']) : null;
+
             if (!$empreendimento_id) {
                 jsonResponse(false, 'Empreendimento é obrigatório.');
             }
-            
             if (!$periodo_inicio || !$periodo_fim) {
                 jsonResponse(false, 'Período de referência é obrigatório.');
             }
-            
-            // Verificar se a coluna titulo existe
-            $colunaTituloExiste = false;
-            try {
-                $stmtCheck = $pdo->query("
-                    SELECT COUNT(*) as existe
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'cobranca'
-                      AND column_name = 'titulo'
-                ");
-                $check = $stmtCheck->fetch(PDO::FETCH_ASSOC);
-                $colunaTituloExiste = ($check && $check['existe'] > 0);
-            } catch (Exception $e) {
-                $colunaTituloExiste = false;
-            }
-            
-            // Verificar se a coluna ano_referencia existe
-            $colunaAnoRefExiste = false;
-            try {
-                $stmtCheck = $pdo->query("
-                    SELECT COUNT(*) as existe
-                    FROM information_schema.columns
-                    WHERE table_schema = 'public'
-                      AND table_name = 'cobranca'
-                      AND column_name = 'ano_referencia'
-                ");
-                $check = $stmtCheck->fetch(PDO::FETCH_ASSOC);
-                $colunaAnoRefExiste = ($check && $check['existe'] > 0);
-            } catch (Exception $e) {
-                $colunaAnoRefExiste = false;
-            }
-            
-            // Montar query
+
             $sql = "
                 SELECT 
                     c.id,
@@ -141,629 +130,298 @@ try {
                     c.cliente_nome,
                     c.parcelamento,
                     c.valor_mensal,
-                    c.datavencimento,
-                    c.situacao,
-                    c.pago,
-                    c.observacao";
-            
-            if ($colunaTituloExiste) {
+                    {$colVenc} AS datavencimento,
+                    " . ($hasSituacao ? 'c.situacao' : "NULL::text AS situacao") . ",
+                    " . ($hasPago ? 'c.pago' : "NULL::text AS pago") . ",
+                    " . ($hasObs ? 'c.observacao' : "NULL::text AS observacao");
+
+            if ($hasTitulo) {
                 $sql .= ", c.titulo";
             }
-            
-            if ($colunaAnoRefExiste) {
+            if ($hasAnoRef) {
                 $sql .= ", c.ano_referencia";
             }
-            
+
             $sql .= "
                 FROM cobranca c
                 LEFT JOIN empreendimentos e ON e.id = c.empreendimento_id
                 LEFT JOIN modulos m ON m.id = c.modulo_id
                 WHERE c.empreendimento_id = :empreendimento_id
-                  AND c.datavencimento >= :periodo_inicio
-                  AND c.datavencimento <= :periodo_fim
-                  AND (c.pago IS NULL OR c.pago = '' OR c.pago = 'N' OR c.pago = 'n')";
-            
+                  AND {$colVenc} >= :periodo_inicio
+                  AND {$colVenc} <= :periodo_fim";
+
+            if ($hasPago) {
+                $sql .= " AND (c.pago IS NULL OR c.pago = '' OR c.pago = 'N' OR c.pago = 'n')";
+            }
+
             $params = [
                 ':empreendimento_id' => $empreendimento_id,
                 ':periodo_inicio' => $periodo_inicio,
-                ':periodo_fim' => $periodo_fim
+                ':periodo_fim' => $periodo_fim,
             ];
-            
-            // Filtros opcionais
+
             if ($titulo) {
-                if ($colunaTituloExiste) {
-                    // Usar CAST para garantir que funciona com qualquer tipo de dado
-                    // Buscar tanto por igualdade exata quanto por LIKE
+                if ($hasTitulo) {
                     if (is_numeric($titulo)) {
-                        // Se for numérico, tentar busca exata primeiro, depois LIKE
                         $sql .= " AND (c.titulo IS NOT NULL AND (CAST(c.titulo AS TEXT) = :titulo_exato OR CAST(c.titulo AS TEXT) LIKE :titulo_like))";
                         $params[':titulo_exato'] = (string)$titulo;
                         $params[':titulo_like'] = '%' . $titulo . '%';
                     } else {
-                        // Se for texto, usar ILIKE (case-insensitive)
                         $sql .= " AND (c.titulo IS NOT NULL AND CAST(c.titulo AS TEXT) ILIKE :titulo_like)";
                         $params[':titulo_like'] = '%' . $titulo . '%';
                     }
                 } else {
-                    // Se não existe coluna título, buscar pelo ID
                     $sql .= " AND CAST(c.id AS TEXT) LIKE :titulo_like";
                     $params[':titulo_like'] = '%' . $titulo . '%';
                 }
             }
-            
+
             if ($contrato) {
                 $sql .= " AND c.contrato LIKE :contrato";
                 $params[':contrato'] = '%' . $contrato . '%';
             }
-            
-            $sql .= " ORDER BY c.datavencimento ASC, c.parcelamento ASC";
-            
+
+            $sql .= " ORDER BY {$colVenc} ASC, c.parcelamento ASC";
+
             $stmt = $pdo->prepare($sql);
-            
-            // Bind dos parâmetros
             foreach ($params as $key => $value) {
-                if (is_int($value)) {
-                    $stmt->bindValue($key, $value, PDO::PARAM_INT);
-                } elseif (is_numeric($value) && strpos($key, '_num') !== false) {
-                    // Se for um parâmetro numérico explicitamente marcado
-                    $stmt->bindValue($key, (int)$value, PDO::PARAM_INT);
-                } else {
-                    $stmt->bindValue($key, $value);
-                }
+                $stmt->bindValue($key, $value, is_int($value) ? PDO::PARAM_INT : PDO::PARAM_STR);
             }
-            
             $stmt->execute();
             $titulos = $stmt->fetchAll(PDO::FETCH_ASSOC);
-            
+
             jsonResponse(true, 'Pesquisa realizada com sucesso.', [
                 'titulos' => $titulos,
-                'total' => count($titulos)
+                'total' => count($titulos),
             ]);
             break;
-            
-        case 'processar':
-            // Log inicial do processamento
+        }
+
+        case 'processar': {
             try {
-                $inputRaw = file_get_contents('php://input');
                 logError('Iniciando processamento de cobrança automática', [
                     'action' => 'processar',
                     'request_method' => $_SERVER['REQUEST_METHOD'] ?? 'N/A',
-                    'input_size' => strlen($inputRaw),
                     'usuario' => $_SESSION['usuario'] ?? 'N/A',
-                    'usuario_id' => $_SESSION['usuario_id'] ?? 'N/A'
+                    'usuario_id' => $_SESSION['usuario_id'] ?? 'N/A',
                 ]);
-            } catch (Exception $eLog) {
-                error_log('Erro ao registrar log inicial: ' . $eLog->getMessage());
+            } catch (Throwable $e) {
+                // ignore
             }
-            
-            // Ler dados do POST JSON
+
             $input = file_get_contents('php://input');
             $data = json_decode($input, true);
-            
-            if (!$data) {
-                $jsonError = json_last_error_msg();
-                try {
-                    logError('Erro ao decodificar JSON no processamento', [
-                        'json_error' => $jsonError,
-                        'json_error_code' => json_last_error(),
-                        'input_preview' => substr($input, 0, 500),
-                        'input_size' => strlen($input)
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log de JSON: ' . $eLog->getMessage());
-                }
-                jsonResponse(false, 'Dados inválidos. Erro JSON: ' . $jsonError);
+            if (!$data || !is_array($data)) {
+                jsonResponse(false, 'Dados inválidos. Erro JSON: ' . json_last_error_msg());
             }
-            
+
             $empreendimento_id = isset($data['empreendimento_id']) ? (int)$data['empreendimento_id'] : null;
-            $periodo_inicio = isset($data['periodo_inicio']) ? trim($data['periodo_inicio']) : null;
-            $periodo_fim = isset($data['periodo_fim']) ? trim($data['periodo_fim']) : null;
             $remissao_boletos = isset($data['remissao_boletos']) ? (int)$data['remissao_boletos'] : 0;
             $titulos = isset($data['titulos']) && is_array($data['titulos']) ? $data['titulos'] : [];
-            
-            try {
-                logError('Dados recebidos para processamento', [
-                    'empreendimento_id' => $empreendimento_id,
-                    'periodo_inicio' => $periodo_inicio,
-                    'periodo_fim' => $periodo_fim,
-                    'total_titulos' => count($titulos),
-                    'remissao_boletos' => $remissao_boletos,
-                    'titulos_ids' => array_map(function($t) { return $t['id'] ?? 'N/A'; }, $titulos)
-                ]);
-            } catch (Exception $eLog) {
-                error_log('Erro ao registrar log de dados: ' . $eLog->getMessage());
-            }
-            
-            // Validações
+
             if (!$empreendimento_id) {
-                try {
-                    logError('Validação falhou: empreendimento_id ausente', [
-                        'dados_recebidos' => ['empreendimento_id' => $empreendimento_id]
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log de validação: ' . $eLog->getMessage());
-                }
                 jsonResponse(false, 'Empreendimento é obrigatório.');
             }
-            
             if (empty($titulos)) {
-                try {
-                    logError('Validação falhou: nenhum título selecionado', [
-                        'total_titulos' => count($titulos)
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log de validação: ' . $eLog->getMessage());
-                }
                 jsonResponse(false, 'Nenhum título selecionado para processar.');
             }
-            
+
             // Buscar banco do empreendimento
-            try {
-                $stmt = $pdo->prepare("
-                    SELECT banco_id
-                    FROM empreendimentos
-                    WHERE id = :id
-                ");
-                $stmt->bindParam(':id', $empreendimento_id, PDO::PARAM_INT);
-                $stmt->execute();
-                $empreendimento = $stmt->fetch(PDO::FETCH_ASSOC);
-                
-                logError('Empreendimento consultado', [
-                    'empreendimento_id' => $empreendimento_id,
-                    'banco_id' => $empreendimento['banco_id'] ?? null
-                ]);
-            } catch (Exception $e) {
-                logError('Erro ao buscar empreendimento', [
-                    'empreendimento_id' => $empreendimento_id,
-                    'error' => $e->getMessage(),
-                    'trace' => $e->getTraceAsString()
-                ], $e);
-                jsonResponse(false, 'Erro ao buscar empreendimento: ' . $e->getMessage());
-            }
-            
+            $stmt = $pdo->prepare("SELECT banco_id FROM empreendimentos WHERE id = :id");
+            $stmt->bindValue(':id', $empreendimento_id, PDO::PARAM_INT);
+            $stmt->execute();
+            $empreendimento = $stmt->fetch(PDO::FETCH_ASSOC);
             $banco_id = $empreendimento['banco_id'] ?? null;
-            
-            // Verificar se há banco configurado para gerar remessa
+
             if (!$banco_id) {
                 jsonResponse(false, 'Empreendimento não possui banco configurado. Configure um banco no cadastro de empreendimentos para gerar remessa CNAB.');
             }
-            
-            // Carregar autoload CNAB antes de iniciar transação
-            if ($banco_id) {
-                $autoloadPath = __DIR__ . '/cnab/autoload.php';
-                logError('Verificando autoload CNAB', [
-                    'banco_id' => $banco_id,
-                    'autoload_path' => $autoloadPath,
-                    'file_exists' => file_exists($autoloadPath)
-                ]);
-                
-                if (!file_exists($autoloadPath)) {
-                    logError('Autoload CNAB não encontrado', [
-                        'path' => $autoloadPath,
-                        'dir_exists' => is_dir(__DIR__ . '/cnab')
-                    ]);
-                    jsonResponse(false, 'Sistema CNAB não encontrado. Verifique a instalação.');
-                }
-                
-                try {
-                    require_once $autoloadPath;
-                    logError('Autoload CNAB carregado com sucesso', [
-                        'CnabFactory_exists' => class_exists('CnabFactory')
-                    ]);
-                } catch (Exception $e) {
-                    logError('Erro ao carregar autoload CNAB', [
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
-                    ], $e);
-                    jsonResponse(false, 'Erro ao carregar sistema CNAB: ' . $e->getMessage());
-                } catch (Error $e) {
-                    logError('Erro fatal ao carregar autoload CNAB', [
-                        'error' => $e->getMessage(),
-                        'trace' => $e->getTraceAsString()
-                    ], $e);
-                    jsonResponse(false, 'Erro fatal ao carregar sistema CNAB: ' . $e->getMessage());
-                }
+
+            $autoloadPath = __DIR__ . '/cnab/autoload.php';
+            if (!file_exists($autoloadPath)) {
+                jsonResponse(false, 'Sistema CNAB não encontrado. Verifique a instalação.');
             }
-            
-            // Iniciar transação
-            try {
-                logError('Iniciando transação de banco de dados', [
-                    'empreendimento_id' => $empreendimento_id,
-                    'banco_id' => $banco_id,
-                    'total_titulos' => count($titulos)
-                ]);
-            } catch (Exception $eLog) {
-                error_log('Erro ao registrar log de transação: ' . $eLog->getMessage());
+            require_once $autoloadPath;
+            if (!class_exists('CnabFactory')) {
+                jsonResponse(false, 'Sistema CNAB inválido (CnabFactory não carregou).');
             }
-            
+
             $pdo->beginTransaction();
-            
             try {
                 $processados = 0;
                 $erros = [];
                 $arquivoCnab = null;
-                
-                try {
-                    logError('Transação iniciada com sucesso', [
-                        'empreendimento_id' => $empreendimento_id
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log: ' . $eLog->getMessage());
+
+                // Buscar dados do banco
+                $stmtBanco = $pdo->prepare("
+                    SELECT id, cedente, cnpj_cpf, banco, conta, agencia, num_banco, carteira,
+                           operacao_cc, codigo_cedente, operacao_cedente, caminho_remessa, multa_mes, juros_mes
+                    FROM bancos
+                    WHERE id = :id
+                ");
+                $stmtBanco->bindValue(':id', (int)$banco_id, PDO::PARAM_INT);
+                $stmtBanco->execute();
+                $banco = $stmtBanco->fetch(PDO::FETCH_ASSOC);
+                if (!$banco) {
+                    throw new Exception('Banco não encontrado no banco de dados.');
                 }
-                
-                // Sempre gerar arquivo CNAB quando houver banco vinculado
-                if ($banco_id) {
-                    logError('Iniciando geração de arquivo CNAB', [
-                        'banco_id' => $banco_id
-                    ]);
-                    
-                    try {
-                        // Buscar dados do banco
-                        $stmtBanco = $pdo->prepare("
-                            SELECT id, cedente, cnpj_cpf, banco, conta, agencia, num_banco, carteira,
-                                   operacao_cc, codigo_cedente, operacao_cedente, caminho_remessa
-                            FROM bancos
-                            WHERE id = :id
-                        ");
-                        $stmtBanco->bindParam(':id', $banco_id, PDO::PARAM_INT);
-                        $stmtBanco->execute();
-                        $banco = $stmtBanco->fetch(PDO::FETCH_ASSOC);
-                        
-                        logError('Dados do banco consultados', [
-                            'banco_id' => $banco_id,
-                            'banco_encontrado' => !empty($banco),
-                            'caminho_remessa' => $banco['caminho_remessa'] ?? 'N/A'
-                        ]);
-                        
-                        if (!$banco) {
-                            throw new Exception('Banco não encontrado no banco de dados.');
-                        }
-                        
-                        if (empty($banco['caminho_remessa'])) {
-                            throw new Exception('Caminho de remessa não configurado para este banco. Configure o caminho no cadastro de bancos.');
-                        }
-                        
-                        // Preparar dados do banco para CNAB
-                        // Extrair agência e dígito verificador (suporta formatos: "1234-5", "12345", "1234")
-                        $agenciaCompleta = $banco['agencia'] ?? '';
-                        $agenciaParts = explode('-', $agenciaCompleta);
-                        $agencia = preg_replace('/[^0-9]/', '', $agenciaParts[0]);
-                        $dvAgencia = '';
-                        if (count($agenciaParts) > 1) {
-                            // Se tem hífen, o dígito está após o hífen
-                            $dvAgencia = preg_replace('/[^0-9]/', '', $agenciaParts[1]);
-                        } else {
-                            // Se não tem hífen, pegar último caractere se for numérico
-                            $agenciaLimpa = preg_replace('/[^0-9]/', '', $agenciaCompleta);
-                            if (strlen($agenciaLimpa) > 4) {
-                                $dvAgencia = substr($agenciaLimpa, -1);
-                                $agencia = substr($agenciaLimpa, 0, -1);
-                            }
-                        }
-                        
-                        // Extrair conta e dígito verificador (suporta formatos: "1234567-8", "12345678", "1234567")
-                        $contaCompleta = $banco['conta'] ?? '';
-                        $contaParts = explode('-', $contaCompleta);
-                        $conta = preg_replace('/[^0-9]/', '', $contaParts[0]);
-                        $dvConta = '';
-                        if (count($contaParts) > 1) {
-                            // Se tem hífen, o dígito está após o hífen
-                            $dvConta = preg_replace('/[^0-9]/', '', $contaParts[1]);
-                        } else {
-                            // Se não tem hífen, pegar último caractere se for numérico
-                            $contaLimpa = preg_replace('/[^0-9]/', '', $contaCompleta);
-                            if (strlen($contaLimpa) > 7) {
-                                $dvConta = substr($contaLimpa, -1);
-                                $conta = substr($contaLimpa, 0, -1);
-                            }
-                        }
-                        
-                        $dadosBanco = [
-                            'agencia' => $agencia,
-                            'dv_agencia' => $dvAgencia,
-                            'conta' => $conta,
-                            'dv_conta' => $dvConta,
-                            'codigo_cedente' => $banco['codigo_cedente'] ?? '',
-                            'cedente' => $banco['cedente'] ?? '',
-                            'carteira' => $banco['carteira'] ?? '',
-                            'num_banco' => $banco['num_banco'] ?? $banco['id'],
-                            'multa_mes' => $banco['multa_mes'] ?? 0
-                        ];
-                        
-                        // Determinar código do banco
-                        $codigoBanco = $banco['num_banco'] ?? '001';
-                        if (empty($codigoBanco) || strlen($codigoBanco) < 3) {
-                            $nomeBanco = strtoupper($banco['banco'] ?? '');
-                            if (strpos($nomeBanco, 'BRASIL') !== false) {
-                                $codigoBanco = '001';
-                            } elseif (strpos($nomeBanco, 'BRADESCO') !== false) {
-                                $codigoBanco = '237';
-                            } elseif (strpos($nomeBanco, 'ITAU') !== false || strpos($nomeBanco, 'ITÁU') !== false) {
-                                $codigoBanco = '341';
-                            } elseif (strpos($nomeBanco, 'SANTANDER') !== false) {
-                                $codigoBanco = '033';
-                            } elseif (strpos($nomeBanco, 'CAIXA') !== false) {
-                                $codigoBanco = '104';
-                            } elseif (strpos($nomeBanco, 'SICREDI') !== false) {
-                                $codigoBanco = '748';
-                            } elseif (strpos($nomeBanco, 'INTER') !== false) {
-                                $codigoBanco = '077';
-                            } else {
-                                $codigoBanco = '001';
-                            }
-                        }
-                        
-                        logError('Verificando CnabFactory', [
-                            'class_exists' => class_exists('CnabFactory'),
-                            'codigo_banco' => $codigoBanco
-                        ]);
-                        
-                        if (!class_exists('CnabFactory')) {
-                            logError('CnabFactory não existe', [
-                                'codigo_banco' => $codigoBanco
-                            ]);
-                            throw new Exception('Classe CnabFactory não foi carregada. Verifique o autoload.');
-                        }
-                        
-                        if (!CnabFactory::isBancoSuportado($codigoBanco)) {
-                            logError('Banco não suportado', [
-                                'codigo_banco' => $codigoBanco,
-                                'bancos_suportados' => CnabFactory::getBancosSuportados()
-                            ]);
-                            throw new Exception("Banco com código {$codigoBanco} não é suportado.");
-                        }
-                        
-                        logError('Criando instância CNAB', [
-                            'codigo_banco' => $codigoBanco,
-                            'versao_cnab' => 400
-                        ]);
-                        
-                        // Criar instância do CNAB
-                        $cnab = CnabFactory::criar($codigoBanco, 400);
-                        
-                        if (!$cnab) {
-                            logError('Falha ao criar instância CNAB', [
-                                'codigo_banco' => $codigoBanco
-                            ]);
-                            throw new Exception('Não foi possível criar instância do CNAB.');
-                        }
-                        
-                        logError('Instância CNAB criada com sucesso', [
-                            'codigo_banco' => $cnab->getCodigoBanco(),
-                            'nome_banco' => $cnab->getNomeBanco()
-                        ]);
-                        
-                        // Buscar dados completos dos títulos
-                        $titulosIds = array_map(function($t) {
-                            return isset($t['id']) ? (int)$t['id'] : 0;
-                        }, $titulos);
-                        
-                        $placeholders = implode(',', array_fill(0, count($titulosIds), '?'));
-                        $stmtTitulos = $pdo->prepare("
-                            SELECT 
-                                c.*, 
-                                e.nome as empreendimento_nome, 
-                                m.nome as modulo_nome,
-                                cli.endereco as endereco_cliente,
-                                cli.bairro as bairro_cliente,
-                                cli.cidade as cidade_cliente,
-                                cli.uf as uf_cliente,
-                                cli.cep as cep_cliente,
-                                cli.cpf_cnpj as cpf_cnpj_cliente,
-                                cli.nome as cliente_nome_completo
-                            FROM cobranca c
-                            LEFT JOIN empreendimentos e ON e.id = c.empreendimento_id
-                            LEFT JOIN modulos m ON m.id = c.modulo_id
-                            LEFT JOIN clientes cli ON cli.cpf_cnpj = c.cpf_cnpj
-                            WHERE c.id IN ({$placeholders})
-                        ");
-                        $stmtTitulos->execute($titulosIds);
-                        $titulosCompletos = $stmtTitulos->fetchAll(PDO::FETCH_ASSOC);
-                        
-                        if (empty($titulosCompletos)) {
-                            throw new Exception('Nenhum título encontrado.');
-                        }
-                        
-                        // Normalizar caminho de remessa
-                        $caminhoRemessa = trim($banco['caminho_remessa']);
-                        
-                        logError('Preparando para gerar arquivo CNAB', [
-                            'caminho_remessa' => $caminhoRemessa,
-                            'total_titulos' => count($titulosCompletos),
-                            'dados_banco_keys' => array_keys($dadosBanco)
-                        ]);
-                        
-                        // Gerar arquivo CNAB
-                        try {
-                            $arquivoCnab = $cnab->gerarRemessa($dadosBanco, $titulosCompletos, $caminhoRemessa);
-                            logError('Arquivo CNAB gerado com sucesso', [
-                                'arquivo' => $arquivoCnab,
-                                'file_exists' => file_exists($arquivoCnab),
-                                'file_size' => file_exists($arquivoCnab) ? filesize($arquivoCnab) : 0
-                            ]);
-                        } catch (Exception $eCnab) {
-                            logError('Erro ao gerar arquivo CNAB', [
-                                'error' => $eCnab->getMessage(),
-                                'caminho_remessa' => $caminhoRemessa,
-                                'trace' => $eCnab->getTraceAsString()
-                            ], $eCnab);
-                            // Passar a mensagem original sem duplicar
-                            throw $eCnab;
-                        } catch (Error $eCnab) {
-                            logError('Erro fatal ao gerar arquivo CNAB', [
-                                'error' => $eCnab->getMessage(),
-                                'caminho_remessa' => $caminhoRemessa,
-                                'trace' => $eCnab->getTraceAsString()
-                            ], $eCnab);
-                            // Converter Error para Exception com mensagem clara
-                            throw new Exception('Erro fatal: ' . $eCnab->getMessage());
-                        }
-                        
-                        logError('Arquivo CNAB gerado na cobrança automática', [
-                            'arquivo' => $arquivoCnab,
-                            'banco_id' => $banco_id,
-                            'codigo_banco' => $codigoBanco,
-                            'total_titulos' => count($titulosCompletos)
-                        ]);
-                        
-                    } catch (Exception $e) {
-                        // Extrair mensagem de erro mais clara
-                        $mensagemErro = $e->getMessage();
-                        
-                        // Melhorar mensagens específicas
-                        if (strpos($mensagemErro, 'Não foi possível criar o arquivo') !== false) {
-                            // Extrair o caminho do erro
-                            if (preg_match('/Não foi possível criar o arquivo: (.+)/', $mensagemErro, $matches)) {
-                                $caminhoArquivo = $matches[1];
-                                $diretorio = dirname($caminhoArquivo);
-                                
-                                // Verificar se o diretório existe
-                                if (!is_dir($diretorio)) {
-                                    $mensagemErro = "Diretório não encontrado: {$diretorio}. Verifique se o caminho de remessa está correto no cadastro do banco.";
-                                } elseif (!is_writable($diretorio)) {
-                                    $mensagemErro = "Sem permissão para criar arquivo no diretório: {$diretorio}. Verifique as permissões do diretório.";
-                                } else {
-                                    $mensagemErro = "Não foi possível criar o arquivo CNAB no caminho: {$caminhoArquivo}. Verifique as permissões do diretório.";
-                                }
-                            }
-                        } elseif (strpos($mensagemErro, 'Não foi possível criar o diretório') !== false) {
-                            $mensagemErro = "Não foi possível criar o diretório de remessa. Verifique o caminho configurado no cadastro do banco e as permissões do sistema.";
-                        } elseif (strpos($mensagemErro, 'Diretório não possui permissão') !== false) {
-                            $mensagemErro = "O diretório de remessa não possui permissão de escrita. Verifique as permissões do diretório.";
-                        }
-                        
-                        $erros[] = $mensagemErro;
-                        logError('Erro ao gerar CNAB na cobrança automática', [
-                            'error' => $e->getMessage(),
-                            'mensagem_melhorada' => $mensagemErro,
-                            'banco_id' => $banco_id,
-                            'caminho_remessa' => $caminhoRemessa ?? null,
-                            'trace' => $e->getTraceAsString()
-                        ]);
-                        // Não interromper o processamento, apenas registrar o erro
-                    } catch (Error $e) {
-                        $mensagemErro = "Erro fatal ao gerar arquivo CNAB: " . $e->getMessage();
-                        $erros[] = $mensagemErro;
-                        logError('Erro fatal ao gerar CNAB na cobrança automática', [
-                            'error' => $e->getMessage(),
-                            'banco_id' => $banco_id,
-                            'trace' => $e->getTraceAsString()
-                        ]);
+                if (empty($banco['caminho_remessa'])) {
+                    throw new Exception('Caminho de remessa não configurado para este banco. Configure o caminho no cadastro de bancos.');
+                }
+
+                // Preparar dados do banco para CNAB (mesma lógica do Git)
+                $agenciaCompleta = $banco['agencia'] ?? '';
+                $agenciaParts = explode('-', $agenciaCompleta);
+                $agencia = preg_replace('/[^0-9]/', '', $agenciaParts[0]);
+                $dvAgencia = '';
+                if (count($agenciaParts) > 1) {
+                    $dvAgencia = preg_replace('/[^0-9]/', '', $agenciaParts[1]);
+                } else {
+                    $agenciaLimpa = preg_replace('/[^0-9]/', '', $agenciaCompleta);
+                    if (strlen($agenciaLimpa) > 4) {
+                        $dvAgencia = substr($agenciaLimpa, -1);
+                        $agencia = substr($agenciaLimpa, 0, -1);
                     }
                 }
-                
-                // Processar cada título
-                try {
-                    logError('Iniciando processamento de títulos individuais', [
-                        'total_titulos' => count($titulos),
-                        'arquivo_cnab_gerado' => $arquivoCnab ? basename($arquivoCnab) : null
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log: ' . $eLog->getMessage());
+
+                $contaCompleta = $banco['conta'] ?? '';
+                $contaParts = explode('-', $contaCompleta);
+                $conta = preg_replace('/[^0-9]/', '', $contaParts[0]);
+                $dvConta = '';
+                if (count($contaParts) > 1) {
+                    $dvConta = preg_replace('/[^0-9]/', '', $contaParts[1]);
+                } else {
+                    $contaLimpa = preg_replace('/[^0-9]/', '', $contaCompleta);
+                    if (strlen($contaLimpa) > 7) {
+                        $dvConta = substr($contaLimpa, -1);
+                        $conta = substr($contaLimpa, 0, -1);
+                    }
                 }
-                
-                foreach ($titulos as $index => $titulo) {
-                    $titulo_id = isset($titulo['id']) ? (int)$titulo['id'] : null;
-                    
-                    if (!$titulo_id) {
-                        $erroMsg = 'ID do título inválido';
-                        $erros[] = $erroMsg;
-                        try {
-                            logError('Título com ID inválido ignorado', [
-                                'titulo_index' => $index,
-                                'titulo_data' => $titulo
-                            ]);
-                        } catch (Exception $eLog) {
-                            error_log('Erro ao registrar log: ' . $eLog->getMessage());
-                        }
+
+                $dadosBanco = [
+                    'agencia' => $agencia,
+                    'dv_agencia' => $dvAgencia,
+                    'conta' => $conta,
+                    'dv_conta' => $dvConta,
+                    // documento do cedente (usado em alguns layouts CNAB, ex.: Itaú registro 1)
+                    'cnpj_cpf' => $banco['cnpj_cpf'] ?? '',
+                    'codigo_cedente' => $banco['codigo_cedente'] ?? '',
+                    'cedente' => $banco['cedente'] ?? '',
+                    'carteira' => $banco['carteira'] ?? '',
+                    'num_banco' => $banco['num_banco'] ?? $banco['id'],
+                    'multa_mes' => $banco['multa_mes'] ?? 0,
+                    'juros_mes' => $banco['juros_mes'] ?? 0,
+                ];
+
+                $codigoBanco = $banco['num_banco'] ?? '001';
+                if (empty($codigoBanco) || strlen((string)$codigoBanco) < 3) {
+                    $nomeBanco = strtoupper($banco['banco'] ?? '');
+                    if (strpos($nomeBanco, 'BRASIL') !== false) $codigoBanco = '001';
+                    elseif (strpos($nomeBanco, 'BRADESCO') !== false) $codigoBanco = '237';
+                    elseif (strpos($nomeBanco, 'ITAU') !== false || strpos($nomeBanco, 'ITÁU') !== false) $codigoBanco = '341';
+                    elseif (strpos($nomeBanco, 'SANTANDER') !== false) $codigoBanco = '033';
+                    elseif (strpos($nomeBanco, 'CAIXA') !== false) $codigoBanco = '104';
+                    elseif (strpos($nomeBanco, 'SICREDI') !== false) $codigoBanco = '748';
+                    elseif (strpos($nomeBanco, 'INTER') !== false) $codigoBanco = '077';
+                    else $codigoBanco = '001';
+                }
+
+                if (!CnabFactory::isBancoSuportado($codigoBanco)) {
+                    throw new Exception("Banco com código {$codigoBanco} não é suportado.");
+                }
+
+                $cnab = CnabFactory::criar($codigoBanco, 400);
+                if (!$cnab) {
+                    throw new Exception('Não foi possível criar instância do CNAB.');
+                }
+
+                // Buscar dados completos dos títulos (precisa garantir datavencimento para CNAB)
+                $titulosIds = array_map(function ($t) {
+                    return isset($t['id']) ? (int)$t['id'] : 0;
+                }, $titulos);
+                $titulosIds = array_values(array_filter($titulosIds, fn($id) => $id > 0));
+                if (empty($titulosIds)) {
+                    throw new Exception('Nenhum título válido encontrado.');
+                }
+
+                $placeholders = implode(',', array_fill(0, count($titulosIds), '?'));
+                $stmtTitulos = $pdo->prepare("
+                    SELECT 
+                        c.*,
+                        {$colVenc} AS datavencimento,
+                        e.nome as empreendimento_nome, 
+                        m.nome as modulo_nome,
+                        cli.endereco as endereco_cliente,
+                        cli.bairro as bairro_cliente,
+                        cli.cidade as cidade_cliente,
+                        cli.uf as uf_cliente,
+                        cli.cep as cep_cliente,
+                        cli.cpf_cnpj as cpf_cnpj_cliente,
+                        cli.nome as cliente_nome_completo
+                    FROM cobranca c
+                    LEFT JOIN empreendimentos e ON e.id = c.empreendimento_id
+                    LEFT JOIN modulos m ON m.id = c.modulo_id
+                    LEFT JOIN clientes cli ON cli.cpf_cnpj = c.cpf_cnpj
+                    WHERE c.id IN ({$placeholders})
+                ");
+                $stmtTitulos->execute($titulosIds);
+                $titulosCompletos = $stmtTitulos->fetchAll(PDO::FETCH_ASSOC);
+                if (empty($titulosCompletos)) {
+                    throw new Exception('Nenhum título encontrado.');
+                }
+
+                // Gerar arquivo CNAB
+                $caminhoRemessa = trim((string)$banco['caminho_remessa']);
+                try {
+                    $arquivoCnab = $cnab->gerarRemessa($dadosBanco, $titulosCompletos, $caminhoRemessa);
+                } catch (Throwable $eCnab) {
+                    $erros[] = $eCnab->getMessage();
+                    $arquivoCnab = null;
+                    try {
+                        logError('Erro ao gerar CNAB na cobrança automática', [
+                            'error' => $eCnab->getMessage(),
+                            'trace' => $eCnab->getTraceAsString(),
+                            'caminho_remessa' => $caminhoRemessa,
+                        ], $eCnab);
+                    } catch (Throwable $eLog) {
+                        // ignore
+                    }
+                }
+
+                // Marcar títulos como enviados/processados
+                foreach ($titulos as $titulo) {
+                    $titulo_id = isset($titulo['id']) ? (int)$titulo['id'] : 0;
+                    if ($titulo_id <= 0) {
+                        $erros[] = 'ID do título inválido';
                         continue;
                     }
-                    
-                    try {
-                        // Marcar título como processado (sempre marcar como ENVIADO se CNAB foi gerado)
-                        $situacao = ($arquivoCnab) ? 'ENVIADO' : 'PROCESSADO';
-                        
-                        try {
-                            logError('Atualizando título na base de dados', [
-                                'titulo_id' => $titulo_id,
-                                'situacao' => $situacao
-                            ]);
-                        } catch (Exception $eLog) {
-                            error_log('Erro ao registrar log: ' . $eLog->getMessage());
-                        }
-                        
-                        $stmtUpdate = $pdo->prepare("
-                            UPDATE cobranca 
-                            SET dataenvio = CURRENT_DATE,
-                                situacao = :situacao
-                            WHERE id = :id
-                        ");
-                        $stmtUpdate->bindParam(':id', $titulo_id, PDO::PARAM_INT);
-                        $stmtUpdate->bindValue(':situacao', $situacao);
-                        $stmtUpdate->execute();
-                        
-                        try {
-                            logError('Título processado na cobrança automática', [
-                                'titulo_id' => $titulo_id,
-                                'empreendimento_id' => $empreendimento_id,
-                                'situacao' => $situacao,
-                                'arquivo_cnab' => $arquivoCnab ? basename($arquivoCnab) : null
-                            ]);
-                        } catch (Exception $eLog) {
-                            error_log('Erro ao registrar log: ' . $eLog->getMessage());
-                        }
-                        
-                        $processados++;
-                    } catch (Exception $eTitulo) {
-                        $erroMsg = "Erro ao processar título ID {$titulo_id}: " . $eTitulo->getMessage();
-                        $erros[] = $erroMsg;
-                        try {
-                            logError('Erro ao processar título individual', [
-                                'titulo_id' => $titulo_id,
-                                'error' => $eTitulo->getMessage(),
-                                'trace' => $eTitulo->getTraceAsString()
-                            ], $eTitulo);
-                        } catch (Exception $eLog) {
-                            error_log('Erro ao registrar log de erro de título: ' . $eLog->getMessage());
-                        }
+
+                    $situacao = $arquivoCnab ? 'ENVIADO' : 'PROCESSADO';
+                    $sets = [];
+                    $params = [':id' => $titulo_id];
+
+                    if ($hasDataEnvio) {
+                        $sets[] = "dataenvio = CURRENT_DATE";
                     }
+                    if ($hasSituacao) {
+                        $sets[] = "situacao = :situacao";
+                        $params[':situacao'] = $situacao;
+                    }
+
+                    if (!empty($sets)) {
+                        $sqlUpdate = "UPDATE cobranca SET " . implode(', ', $sets) . " WHERE id = :id";
+                        $stmtUpdate = $pdo->prepare($sqlUpdate);
+                        foreach ($params as $k => $v) {
+                            $stmtUpdate->bindValue($k, $v, ($k === ':id') ? PDO::PARAM_INT : PDO::PARAM_STR);
+                        }
+                        $stmtUpdate->execute();
+                    }
+                    $processados++;
                 }
-                
-                try {
-                    logError('Processamento de títulos individuais concluído', [
-                        'processados' => $processados,
-                        'total' => count($titulos),
-                        'erros_count' => count($erros)
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log: ' . $eLog->getMessage());
-                }
-                
-                // Commit da transação
-                try {
-                    logError('Finalizando processamento - preparando commit', [
-                        'processados' => $processados,
-                        'total' => count($titulos),
-                        'erros_count' => count($erros),
-                        'arquivo_cnab' => $arquivoCnab ? basename($arquivoCnab) : null
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log antes do commit: ' . $eLog->getMessage());
-                }
-                
+
                 $pdo->commit();
-                
-                try {
-                    logError('Transação commitada com sucesso', [
-                        'processados' => $processados,
-                        'total' => count($titulos)
-                    ]);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log após commit: ' . $eLog->getMessage());
-                }
-                
+
                 $mensagem = "✅ Processados {$processados} título(s) com sucesso.";
-                
                 if ($arquivoCnab) {
                     $mensagem .= "\n\n📄 Arquivo CNAB de remessa gerado com sucesso!";
                     $mensagem .= "\n📁 Arquivo: " . basename($arquivoCnab);
@@ -773,141 +431,72 @@ try {
                 } else {
                     $mensagem .= "\n\n⚠️ Atenção: Não foi possível gerar o arquivo CNAB de remessa.";
                 }
-                
                 if (!empty($erros)) {
                     $mensagem .= "\n\n❌ Erro(s) encontrado(s):";
                     foreach ($erros as $erro) {
                         $mensagem .= "\n   • " . $erro;
                     }
-                    $mensagem .= "\n\n💡 Verifique:";
-                    $mensagem .= "\n   • Se o caminho de remessa está correto no cadastro do banco";
-                    $mensagem .= "\n   • Se o diretório existe e possui permissão de escrita";
-                    $mensagem .= "\n   • Se há espaço suficiente em disco";
                 }
-                
-                $responseData = [
+
+                $resp = [
                     'processados' => $processados,
                     'total' => count($titulos),
-                    'erros' => $erros
+                    'erros' => $erros,
+                    'remessa_gerada' => (bool)$arquivoCnab,
                 ];
-                
                 if ($arquivoCnab) {
-                    $responseData['arquivo_cnab'] = basename($arquivoCnab);
-                    $responseData['caminho_cnab'] = $arquivoCnab;
-                    $responseData['remessa_gerada'] = true;
-                } else {
-                    $responseData['remessa_gerada'] = false;
+                    $resp['arquivo_cnab'] = basename($arquivoCnab);
+                    $resp['caminho_cnab'] = $arquivoCnab;
                 }
-                
-                jsonResponse(true, $mensagem, $responseData);
-                
-            } catch (Exception $e) {
+
+                jsonResponse(true, $mensagem, $resp);
+            } catch (Throwable $e) {
                 try {
-                    $pdo->rollBack();
-                } catch (Exception $eRollback) {
-                    error_log('Erro ao fazer rollback: ' . $eRollback->getMessage());
+                    if ($pdo->inTransaction()) $pdo->rollBack();
+                } catch (Throwable $eRollback) {
+                    // ignore
                 }
-                
-                // Limpar qualquer output antes de enviar erro
-                ob_clean();
-                
-                $mensagemErro = 'Erro ao processar títulos: ' . $e->getMessage();
-                
                 try {
                     logError('Erro ao processar cobrança automática', [
                         'action' => $action,
                         'error' => $e->getMessage(),
-                        'error_code' => $e->getCode(),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
                         'trace' => $e->getTraceAsString(),
                         'empreendimento_id' => $empreendimento_id ?? null,
                         'banco_id' => $banco_id ?? null,
-                        'total_titulos' => count($titulos ?? [])
                     ], $e);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log de exceção: ' . $eLog->getMessage());
-                    error_log('Erro original: ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
+                } catch (Throwable $eLog) {
+                    // ignore
                 }
-                
-                jsonResponse(false, $mensagemErro);
-            } catch (Error $e) {
-                try {
-                    $pdo->rollBack();
-                } catch (Exception $eRollback) {
-                    error_log('Erro ao fazer rollback: ' . $eRollback->getMessage());
-                }
-                
-                // Limpar qualquer output antes de enviar erro
-                ob_clean();
-                
-                $mensagemErro = 'Erro fatal ao processar títulos: ' . $e->getMessage();
-                
-                try {
-                    logError('Erro fatal ao processar cobrança automática', [
-                        'action' => $action,
-                        'error' => $e->getMessage(),
-                        'error_code' => $e->getCode(),
-                        'file' => $e->getFile(),
-                        'line' => $e->getLine(),
-                        'trace' => $e->getTraceAsString(),
-                        'empreendimento_id' => $empreendimento_id ?? null,
-                        'banco_id' => $banco_id ?? null
-                    ], $e);
-                } catch (Exception $eLog) {
-                    error_log('Erro ao registrar log de erro fatal: ' . $eLog->getMessage());
-                    error_log('Erro fatal original: ' . $e->getMessage() . ' em ' . $e->getFile() . ':' . $e->getLine());
-                }
-                
-                jsonResponse(false, $mensagemErro);
+                jsonResponse(false, 'Erro ao processar títulos: ' . $e->getMessage(), [], 500);
             }
+
             break;
-            
+        }
+
         default:
-            jsonResponse(false, 'Ação não reconhecida.');
-            break;
+            jsonResponse(false, 'Ação não reconhecida.', [], 400);
     }
-    
 } catch (PDOException $e) {
-    // Limpar qualquer output antes de enviar erro
-    ob_clean();
-    logError('Erro PDO na cobrança automática', [
-        'action' => $action,
-        'error' => $e->getMessage(),
-        'code' => $e->getCode(),
-        'file' => $e->getFile(),
-        'line' => $e->getLine(),
-        'trace' => $e->getTraceAsString(),
-        'sql_state' => isset($e->errorInfo[0]) ? $e->errorInfo[0] : null,
-        'driver_code' => isset($e->errorInfo[1]) ? $e->errorInfo[1] : null,
-        'driver_message' => isset($e->errorInfo[2]) ? $e->errorInfo[2] : null
-    ], $e);
-    jsonResponse(false, 'Erro ao processar: ' . $e->getMessage());
-} catch (Exception $e) {
-    // Limpar qualquer output antes de enviar erro
-    ob_clean();
-    logError('Erro geral na cobrança automática', [
-        'action' => $action,
-        'error' => $e->getMessage(),
-        'code' => $e->getCode(),
-        'file' => $e->getFile(),
-        'line' => $e->getLine(),
-        'trace' => $e->getTraceAsString(),
-        'class' => get_class($e)
-    ], $e);
-    jsonResponse(false, 'Erro ao processar: ' . $e->getMessage());
-} catch (Error $e) {
-    // Limpar qualquer output antes de enviar erro
-    ob_clean();
-    logError('Erro fatal na cobrança automática', [
-        'action' => $action,
-        'error' => $e->getMessage(),
-        'code' => $e->getCode(),
-        'file' => $e->getFile(),
-        'line' => $e->getLine(),
-        'trace' => $e->getTraceAsString(),
-        'class' => get_class($e)
-    ], $e);
-    jsonResponse(false, 'Erro fatal ao processar: ' . $e->getMessage());
+    try {
+        logError('Erro PDO na cobrança automática', [
+            'action' => $action,
+            'error' => $e->getMessage(),
+            'code' => $e->getCode(),
+        ], $e);
+    } catch (Throwable $eLog) {
+        // ignore
+    }
+    jsonResponse(false, 'Erro ao processar: ' . $e->getMessage(), [], 500);
+} catch (Throwable $e) {
+    try {
+        logError('Erro geral na cobrança automática', [
+            'action' => $action,
+            'error' => $e->getMessage(),
+            'code' => $e->getCode(),
+        ], $e);
+    } catch (Throwable $eLog) {
+        // ignore
+    }
+    jsonResponse(false, 'Erro ao processar: ' . $e->getMessage(), [], 500);
 }
 
